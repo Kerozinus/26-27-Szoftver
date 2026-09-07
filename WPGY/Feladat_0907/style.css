@@ -22,8 +22,8 @@ body{
     color: #ebdbdb;
 }
 .fekete{
-    background-color: #2B1E16;
-    color: #419789;
+    background-color: #da5b0c;
+    color: #e4e4e4;
 }
 nav{
     background: #2A7B9B;
@@ -37,7 +37,7 @@ a{
     font-style: normal;
     text-decoration: none;
     transition: background-color 0.5s,color 0.5s,border-radius 0.5s;
-    color: #187070;
+    color: #5ed6d6;
     border-radius: 0px;
     padding-left: 10px;
     padding-right: 10px;
