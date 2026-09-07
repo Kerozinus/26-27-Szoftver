@@ -1,0 +1,80 @@
+@import url("https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css");
+html{
+    scroll-behavior: smooth;
+    font-size: 20px;
+}
+img {
+    width: 600px;
+}
+header{
+    background: #2A7B9B;
+    background: linear-gradient(90deg, rgba(42, 123, 155, 1) 0%, rgba(87, 199, 133, 1) 50%, rgba(237, 221, 83, 1) 100%);
+}
+body{
+    text-align: center;
+    margin: auto;
+    display: block;
+    font-family: 'Arial', serif;
+    background-color: rgb(148, 126, 126);
+}
+.feher{
+    background-color: #419789;
+    color: #ebdbdb;
+}
+.fekete{
+    background-color: #2B1E16;
+    color: #419789;
+}
+nav{
+    background: #2A7B9B;
+    background: linear-gradient(90deg, rgba(42, 123, 155, 1) 0%, rgba(87, 199, 133, 1) 50%, rgba(237, 221, 83, 1) 100%);
+    color: #22ecb0;
+    padding-top: 50px;
+    padding-bottom: 50px;
+    font-size: 25px;
+}
+a{
+    font-style: normal;
+    text-decoration: none;
+    transition: background-color 0.5s,color 0.5s,border-radius 0.5s;
+    color: #187070;
+    border-radius: 0px;
+    padding-left: 10px;
+    padding-right: 10px;
+}
+a:hover{
+    background-color: #E6D3A3;
+    color: #bdb8b8;
+    transition: background-color 0.5s,color 0.5s,border-radius 0.5s;
+    border-radius: 20px; 
+    padding-left: 10px;
+    padding-right: 10px;
+}
+div{
+    border-radius: 50px;
+    margin-left: 20%;
+    margin-right: 20%;
+    padding-bottom: 10px;
+    margin-bottom: 15px;
+    margin-top: 15px;
+}
+img{
+    border-radius: 20px;
+}
+div img {
+    max-width: 90%;
+    height: auto;
+    display: block;
+    margin: auto;
+}
+.feher > a{
+    transition: background-color 0.5s,color 0.5s;
+    color: rgb(106, 170, 212);
+    border-radius: 10px;
+}
+.feher > a:hover{
+    transition: background-color 0.5s,color 0.5s;
+    color: white;
+    background-color: #2B1E16;
+    border-radius: 10px;
+}
