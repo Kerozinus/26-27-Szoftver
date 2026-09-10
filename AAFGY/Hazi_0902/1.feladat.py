@@ -1,4 +1,4 @@
-szam = int(input("Adj meg egy egász számot: "))
+szam = int(input("Adj meg egy egész számot: "))
 if szam % 2 == 0:
     print("A megadott számod páros.")
 else:
