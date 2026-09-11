@@ -41,7 +41,6 @@ footer {
 
 .kepek {
 
-    float: right;
     margin-bottom: 20px;
     border-radius: 10px;
     box-shadow: 6px 6px 12px rgb(126, 113, 94);
@@ -50,10 +49,10 @@ footer {
 
 #kepek {
 
-    display: flex;
-    flex-direction: column;
     gap: 10px;
     margin-top: 75px;
+    display:flexbox;
+    flex-direction: row;
 
 }
 
@@ -72,18 +71,13 @@ footer {
 
 }
 
-nav {
-
-    background-color: aqua;
-
-}
-
 .card{
 
     background-color: rgb(248, 240, 227);
     border-radius: 20px;
     padding: 20px;
-    flex-direction: column;
+    flex-direction: row;
+    box-shadow: 6px 6px 12px rgb(126, 113, 94);
 
 }
 
@@ -98,6 +92,28 @@ nav {
     text-align: justify;
     display: flex;
     gap: 10px;
+
+}
+
+.jobbra {
+
+    margin-left: 170px;
+
+}
+
+nav {
+
+    background-color: rgb(187, 164, 134);
+    margin: 100px;
+    padding: 20px;
+    border-radius: 20px;
+
+}
+
+a {
+
+    background-color:  rgb(248, 240, 227);
+    
 
 }
 
