@@ -39,17 +39,6 @@ footer {
 
 }
 
-.csalad {
-
-    background-color: rgb(187, 164, 134);
-    margin: 20px;
-    padding: 20px;
-    border-radius: 20px;
-    box-shadow: 6px 6px 12px rgb(126, 113, 94);
-    float: left;
-
-}
-
 .kepek {
 
     float: right;
@@ -64,7 +53,7 @@ footer {
     display: flex;
     flex-direction: column;
     gap: 10px;
-    margin-top: 180px;
+    margin-top: 75px;
 
 }
 
@@ -77,7 +66,7 @@ footer {
 
 }
 
-#kozep {
+.kozep {
 
     text-align: center;
 
@@ -89,6 +78,28 @@ nav {
 
 }
 
+.card{
+
+    background-color: rgb(248, 240, 227);
+    border-radius: 20px;
+    padding: 20px;
+    flex-direction: column;
+
+}
+
+.csalad {
+
+    background-color: rgb(187, 164, 134);
+    margin: 20px;
+    padding: 20px;
+    border-radius: 20px;
+    box-shadow: 6px 6px 12px rgb(126, 113, 94);
+    float: left;
+    text-align: justify;
+    display: flex;
+    gap: 10px;
+
+}
 
 
 
