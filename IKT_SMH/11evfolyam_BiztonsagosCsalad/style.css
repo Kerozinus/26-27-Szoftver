@@ -68,6 +68,29 @@ footer {
 
 }
 
+.biztonsag {
+
+    margin-left: 200px;
+    margin-right: 200px;
+    text-align: justify;
+    list-style-position: inside;
+
+}
+
+#kozep {
+
+    text-align: center;
+
+}
+
+nav {
+
+    background-color: aqua;
+
+}
+
+
+
 
 
 
