@@ -1,0 +1,83 @@
+1.
+
+SELECT `orszag`, `fovaros` FROM `orszagok` WHERE `orszag`="MADAGASZKÁR"
+
+megoldas: ANTANANARIVO
+
+2.
+
+SELECT `orszag`, `fovaros` FROM `orszagok` WHERE `fovaros`="OUAGADOUGOU"
+
+BURKINA FASO
+
+3.
+
+SELECT `orszag`, `autojel` FROM `orszagok` WHERE `autojel`="TT"
+
+TRINIDAD ÉS TOBAGO
+
+4.
+
+SELECT `orszag`,`penzjel` FROM `orszagok` WHERE `penzjel`="SGD"
+
+SZINGAPÚR
+
+5.
+
+SELECT `orszag`, `telefon` FROM `orszagok` WHERE `telefon`="61"
+
+AUSZTRÁLIA
+
+6.
+
+SELECT `id`, `orszag`, `fovaros`, `foldr_hely`, `terulet`, `allamforma`, `nepesseg`, `nep_fovaros`, `autojel`, `country`, `capital` FROM `orszagok` WHERE `fovaros`="MONACO"
+
+1.95km2
+
+7.
+
+SELECT `id`, `orszag`, `fovaros`, `foldr_hely`, `terulet`, `allamforma`, `nepesseg`, `nep_fovaros`, `autojel`, `country`, `capital`, `penznem`, `penzjel`, `valtopenz`, `telefon`, `gdp`, `kat` FROM `orszagok` WHERE `orszag`="Málta";
+
+392.000fő
+
+8.
+
+SELECT `id`, `orszag`, `fovaros`, `foldr_hely`, `terulet`, `allamforma`, `nepesseg`, `nep_fovaros`, `autojel`, `country`, `capital`, `penznem`, `penzjel`, `valtopenz`, `telefon`, `gdp`, `kat`, `nepesseg`/`terulet`*1000 AS nepsuruseg FROM `orszagok` WHERE `orszag`="JAPÁN"
+
+342.3031
+
+9.
+
+SELECT SUM(`nepesseg`)/1000000 AS fold_nepesseg FROM `orszagok`
+
+7.0763
+
+10.
+
+SELECT SUM(`terulet`) AS orszagok_terulete FROM `orszagok`
+
+133598224.66
+
+11.
+
+SELECT AVG(`nepesseg`) AS atlag_nep FROM `orszagok`
+
+36475.9691
+
+12.
+
+SELECT AVG(`terulet`) AS atlag_terulet FROM `orszagok`
+
+688650.642577
+
+13.
+
+SELECT SUM(`nepesseg`)*1000/ SUM(`terulet`) AS fold_nsuruseg FROM `orszagok`
+
+52.9673
+
+14.
+
+SELECT COUNT(`terulet`>1000000) as nagyteruletu_orszag FROM `orszagok`;
+
+194
