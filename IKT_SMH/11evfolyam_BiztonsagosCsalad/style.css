@@ -103,10 +103,16 @@ footer {
 
 nav {
 
-    background-color: rgb(187, 164, 134);
-    margin: 100px;
+   display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 15px;
+
+    margin-top: 80px;
     padding: 20px;
-    border-radius: 20px;
+
+    background-color: rgba(184,164,137);
+    border-radius: 12px;
 
 }
 
@@ -117,6 +123,23 @@ a {
 
 }
 
+a {
+    display: inline-block;
+    margin-top: 20px;
+    padding: 10px 15px;
+
+    text-decoration: none;
+    color: white;
+    background-color: rgb(105, 94, 79);
+
+    border-radius: 8px;
+    border: 1px solid #555;
+
+    transition: 0.3s;
+}
+a:hover {
+    transform: translateY(-3px);
+}
 
 
 
