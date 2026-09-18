@@ -108,7 +108,8 @@ nav {
     justify-content: center;
     gap: 15px;
 
-    margin-top: 80px;
+    margin-top: 5px;
+    margin-bottom: 40px;
     padding: 20px;
 
     background-color: rgba(184,164,137);
