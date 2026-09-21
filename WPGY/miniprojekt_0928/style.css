@@ -1,0 +1,37 @@
+#fejlec{
+    background: #020024;
+    background: linear-gradient(165deg, rgba(2, 0, 36, 1) 0%, rgba(9, 9, 121, 1) 35%, rgba(0, 212, 255, 1) 100%);
+    color: blanchedalmond;
+    margin-left: -15px;
+    margin-right: -15px;
+    margin-top: -15px;
+    padding-top: 15px;
+    padding-bottom: 15px;
+}
+#fejlec>header{
+    font-size: 30px;
+}
+button{
+    background: none;
+    border: solid 0.4px;
+    color: white;
+    border-radius: 50px;
+    padding-top: 5px;
+    padding-bottom: 5px;
+    font-size: 18px;
+    transition: background-color 0.5s,color 0.5s,padding-left 0.7s,padding-right 0.7s;
+}
+button:hover{
+    transition: background-color 0.5s,color 0.5s,padding-left 0.7s,padding-right 0.7s;
+    background-color: white;
+    padding-left: 50px;
+    padding-right: 50px;
+    color: black;
+}
+#fejlec>p{
+    font-style: italic;
+}
+body{
+    text-align: center;
+    font-family: Tahoma, sans-serif;
+}

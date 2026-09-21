@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="author" content="IGB">
+    <link rel="stylesheet" href="style.css">
+    <title>OtthonPont</title>
+</head>
+<body>
+    <div id="fejlec">
+        <header>Minden, amire otthon szükséged van!</header>
+        <p>Praktikus, megbízható és stílusos háztartási termékek a rendezettebb, kényelmesebb mindennapokért.</p>
+        <button onclick="koszones()">Üdvözlünk!</button>
+        <button onclick="urites()">Kosár ürítése</button>
+        <button onclick="kosarba()">Kosárba</button> <br> <br>
+        <button onclick="frissites()">Kosár tartalmának szinkronizálása</button>
+        <p id="kosar">Kosár tartalma: </p>
+    </div>
+    <div class="bemutatkozas">
+        <h1>Rövid bemutatkozás</h1>
+        <p>Az OtthonPont azért jött létre, hogy egyszerűbbé tegye a mindennapi bevásárlást. Webshopunkban olyan hasznos háztartási termékeket találsz, amelyek megkönnyítik a takarítást, a rendszerezést, a konyhai munkát és az otthoni élet számos apró feladatát.</p>
+        <p>Válogass praktikus termékeink közül, és teremts rendezettebb, kényelmesebb otthont könnyedén!</p>
+    
+    </div>
+    <h1>Konyhai eszközök</h1>
+    <p>Hasznos kiegészítők a főzéshez, sütéshez és a konyhai rendszerezéshez.</p>
+    <div class="termekek">
+        <div class="termek">
+
+        </div>
+    </div>
+<script>
+function koszones() {
+alert("Szia, üdv a láncfűrész weboldalán!");
+}
+let kosar = 0
+function kosarba(){
+    kosar = kosar + 1
+}
+function urites(){
+    kosar = 0
+}
+document.getElementById("kosar")
+.textContent = "Kosár tartalma:" + kosar;
+
+</script>
+</body>
+</html>
