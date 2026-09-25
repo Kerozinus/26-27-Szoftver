@@ -142,8 +142,17 @@ a:hover {
     transform: translateY(-3px);
 }
 
+<<<<<<< Updated upstream
+=======
+header{
 
+    font-size: 40px;
+    background-color: rgba(184,164,137);
+    margin-bottom: 20px;
+    border-radius: 8px;
+}
 
+>>>>>>> Stashed changes
 
 
 
