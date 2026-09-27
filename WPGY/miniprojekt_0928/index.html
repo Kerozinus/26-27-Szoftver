@@ -12,10 +12,6 @@
         <header>Minden, amire otthon szükséged van!</header>
         <p>Praktikus, megbízható és stílusos háztartási termékek a rendezettebb, kényelmesebb mindennapokért.</p>
         <button onclick="koszones()">Üdvözlünk!</button>
-        <button onclick="urites()">Kosár ürítése</button>
-        <button onclick="kosarba()">Kosárba</button> <br> <br>
-        <button onclick="frissites()">Kosár tartalmának szinkronizálása</button>
-        <p id="kosar">Kosár tartalma: </p>
     </div>
     <div class="bemutatkozas">
         <h1>Rövid bemutatkozás</h1>
@@ -26,24 +22,148 @@
     <h1>Konyhai eszközök</h1>
     <p>Hasznos kiegészítők a főzéshez, sütéshez és a konyhai rendszerezéshez.</p>
     <div class="termekek">
-        <div class="termek">
 
+        <div class="termek">
+            <img src="kepek/1.avif" alt="Rozsdamentes acél serpenyő">
+
+            <h3>Rozsdamentes acél serpenyő 28 cm</h3>
+
+            <p class="ar">8 990 Ft</p>
         </div>
+
+        <div class="termek">
+            <img src="kepek/2.webp" alt="5 részes késkészlet">
+
+            <h3>5 részes késkészlet</h3>
+
+            <p class="ar">12 490 Ft</p>
+        </div>
+
+        <div class="termek">
+            <img src="kepek/3.jpg" alt="Bambusz vágódeszka">
+
+            <h3>Bambusz vágódeszka</h3>
+
+            <p class="ar">4 490 Ft</p>
+        </div>
+
+        <div class="termek">
+            <img src="kepek/4.avif" alt="Üveg ételtároló szett – 5 db">
+
+            <h3>Üveg ételtároló szett – 5 db</h3>
+
+            <p class="ar">7 990 Ft</p>
+        </div>
+
+        <div class="termek">
+            <img src="kepek/5.jpg" alt="Elektromos vízforraló 1,7 L">
+
+            <h3>Elektromos vízforraló 1,7 L</h3>
+
+            <p class="ar">9 990 Ft</p>
+        </div>
+
+        <div class="termek">
+            <img src="kepek/6.jfif" alt="Kávé- és teafőző kanna">
+
+            <h3>Kávé- és teafőző kanna</h3>
+
+            <p class="ar">6 490 Ft</p>
+        </div>
+
+        <div class="termek">
+            <img src="kepek/7.webp" alt="Mikroszálas törlőkendő – 8 db">
+
+            <h3>Mikroszálas törlőkendő – 8 db</h3>
+
+            <p class="ar">2 490 Ft</p>
+        </div>
+
+        <div class="termek">
+            <img src="kepek/8.jpg" alt="Felmosó szett vödörrel">
+
+            <h3>Felmosó szett vödörrel</h3>
+
+            <p class="ar">8 990 Ft</p>
+        </div>
+
+        <div class="termek">
+            <img src="kepek/9.jpg" alt="Ablaktisztító lehúzó">
+
+            <h3>Ablaktisztító lehúzó</h3>
+
+            <p class="ar">2 990 Ft</p>
+        </div>
+
+        <div class="termek">
+            <img src="kepek/10.jpg" alt="Összecsukható ruhaszárító">
+
+            <h3>Összecsukható ruhaszárító</h3>
+
+            <p class="ar">11 990 Ft</p>
+        </div>
+
+        <div class="termek">
+            <img src="kepek/11.jpg" alt="3 részes mosókosár szett">
+
+            <h3>3 részes mosókosár szett</h3>
+
+            <p class="ar">9 490 Ft</p>
+        </div>
+
+        <div class="termek">
+            <img src="kepek/12.jfif" alt="Ruhakefe és szösztelenítő">
+
+            <h3>Ruhakefe és szösztelenítő</h3>
+
+            <p class="ar">2 790 Ft</p>
+        </div>
+
+        <div class="termek">
+            <img src="kepek/13.avif" alt="Ruhakefe és szösztelenítő">
+
+            <h3>Ruhakefe és szösztelenítő</h3>
+
+            <p class="ar">2 790 Ft</p>
+        </div>
+
+        <div class="termek">
+            <img src="kepek/14.webp" alt="Automata szappanadagoló">
+
+            <h3>Automata szappanadagoló</h3>
+
+            <p class="ar">6 990 Ft</p>
+        </div>
+
+        <div class="termek">
+            <img src="kepek/15.jfif" alt="Fürdőszobai tárolópolc">
+
+            <h3>Fürdőszobai tárolópolc</h3>
+
+            <p class="ar">7 490 Ft</p>
+        </div>
+
+        <div class="termek">
+            <img src="kepek/16.avif" alt="Digitális személymérleg">
+
+            <h3>Digitális személymérleg</h3>
+
+            <p class="ar">5 990 Ft</p>
+        </div>
+
+        <div class="termek">
+            <img src="kepek/17.webp" alt="WC-papír tartó polccal">
+
+            <h3>WC-papír tartó polccal</h3>
+
+            <p class="ar">4 490 Ft</p>
+        </div>
+
     </div>
 <script>
 function koszones() {
-alert("Szia, üdv a láncfűrész weboldalán!");
+alert("Szia, üdvözlünk az OtthonPont weboldalán!");
 }
-let kosar = 0
-function kosarba(){
-    kosar = kosar + 1
-}
-function urites(){
-    kosar = 0
-}
-document.getElementById("kosar")
-.textContent = "Kosár tartalma:" + kosar;
-
 </script>
 </body>
 </html>

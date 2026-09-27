@@ -35,3 +35,36 @@ body{
     text-align: center;
     font-family: Tahoma, sans-serif;
 }
+.termekek {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 20px;
+    margin-left: 10%;
+    margin-right: 10%;
+}
+
+.termek {
+    border: 1px solid #747474;
+    border-radius: 12px;
+    padding: 15px;
+    background-color: white;
+}
+
+.termek img {
+    width: 100%;
+    height: 200px;
+    object-fit: contain;
+}
+
+.termek h3 {
+    font-size: 18px;
+}
+
+.ar {
+    font-size: 20px;
+    font-weight: bold;
+}
+.bemutatkozas{
+    margin-left: 10%;
+    margin-right: 10%;
+}
