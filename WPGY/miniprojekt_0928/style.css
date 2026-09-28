@@ -11,6 +11,10 @@
 #fejlec>header{
     font-size: 30px;
 }
+#fejlec>p{
+    margin-left: 10%;
+    margin-right: 10%;
+}
 button{
     background: none;
     border: solid 0.4px;
