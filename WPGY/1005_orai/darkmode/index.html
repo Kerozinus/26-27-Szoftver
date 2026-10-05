@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dark mode tutorial</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <section>
+        <h1>Digitális Polgári Kör</h1>
+        <p>WC István</p>
+    </section>    
+    <ul>
+        <li><span>Sötét</span></li>
+        <li><span>Világos</span></li>
+    </ul>
+    <script src="https://code.jquery.com/jquery-3.3.1.js"></script>
+    <script type="text/javascript">
+        $(document).ready(function(){
+            $('ul').click(function(){
+                $('ul').toggleClass('active')
+                $('section').toggleClass('dark')
+            })
+        })
+    </script>
+</body>
+</html>
