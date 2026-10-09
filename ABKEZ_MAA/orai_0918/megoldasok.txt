@@ -81,3 +81,56 @@ SELECT SUM(`nepesseg`)*1000/ SUM(`terulet`) AS fold_nsuruseg FROM `orszagok`
 SELECT COUNT(`terulet`>1000000) as nagyteruletu_orszag FROM `orszagok`;
 
 194
+
+15.
+
+SELECT COUNT(*) FROM orszagok WHERE terulet < 100;
+
+5
+
+16.
+
+SELECT COUNT(*) FROM orszagok WHERE nepesseg*1000 < 20000;
+
+4
+
+17.
+
+9
+
+18.
+
+SELECT COUNT(*) FROM orszagok WHERE terulet BETWEEN 50000 AND 150000;
+
+25
+
+19.
+
+SELECT COUNT(*) FROM orszagok WHERE nepesseg*1000 BETWEEN 8000000 AND 12000000;
+
+23
+
+20.
+
+SELECT `nep_fovaros`,`fovaros` FROM orszagok WHERE nep_fovaros*1000 > 20000000;
+
+TÓKIÓ,MEXIKÓVÁROS
+
+21.
+
+SELECT `orszag` FROM orszagok WHERE ((nepesseg*1000)/terulet) > 500;
+
+MÁLTA,MONACO,VATIKÁN,BANGLADES,DÉL-KOREA,NAURU,BARBADOS,SZINGAPÚR,MAURITIUS,MALDÍV-SZIGETEK,TAJVAN
+
+22.
+
+SELECT COUNT(*) FROM orszagok WHERE `allamforma`="KÖZTÁRSASÁG";
+
+76
+
+23.
+
+SELECT `orszag`,`penznem` FROM orszagok WHERE `penznem`="kelet-karib dollár";
+
+SAINT LUCIA,SAINT VINCENT ÉS GRENADINE, GRENADA,ANTIGUA ÉS BARBUDA, DOMINIKAI KÖZÖSSÉG, SAINT KITTS ÉS NEVIS
+
