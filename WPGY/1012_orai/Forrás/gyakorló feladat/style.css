@@ -1,0 +1,117 @@
+
+
+:root {
+    --aszfalt: #30343B;
+    --vilagos-aszfalt: #41464F;
+    --cseresznye: #FFB7C5;
+    --feher: #FFFFFF;
+}
+
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background-color: var(--aszfalt);
+    color: var(--feher);
+}
+
+header {
+    background-color: var(--vilagos-aszfalt);
+    padding: 20px;
+    text-align: center;
+}
+
+header h1 {
+    color: var(--cseresznye);
+}
+
+
+nav {
+    margin-top: 15px;
+}
+
+nav a {
+    color: var(--feher);
+    text-decoration: none;
+    margin: 10px;
+}
+
+nav a:hover {
+    color: var(--cseresznye);
+}
+
+
+main {
+    max-width: 1000px;
+    margin: auto;
+    padding: 20px;
+}
+
+section {
+    margin-bottom: 30px;
+}
+
+h2 {
+    color: var(--cseresznye);
+}
+
+
+.bemutato {
+    text-align: center;
+    padding: 30px;
+}
+
+
+.video-kartya {
+    background-color: var(--vilagos-aszfalt);
+    padding: 20px;
+    border-radius: 10px;
+}
+
+video {
+    width: 100%;
+    border-radius: 8px;
+}
+
+
+aside {
+    margin-top: 30px;
+    margin-bottom: 30px;
+}
+
+.ajanlasok {
+    display: flex;
+    gap: 20px;
+}
+
+.ajanlas {
+    background-color: var(--vilagos-aszfalt);
+    padding: 20px;
+    border-radius: 10px;
+    flex: 1;
+}
+
+.ajanlas h3 {
+    color: var(--cseresznye);
+}
+
+
+footer {
+    background-color: var(--vilagos-aszfalt);
+    text-align: center;
+    padding: 20px;
+}
+
+@media (max-width: 600px) {
+    .ajanlasok {
+        flex-direction: column;
+    }
+
+    nav a {
+        display: inline-block;
+    }
+}
