@@ -1,0 +1,32 @@
+.kiemelt{
+    color: black;
+    background-color: aqua;
+    text-align: center;
+    transition: color,text-align,background-color 1s;
+}
+#uzenet{
+    color:white;
+    transition: text-align,background-color 1s;
+}
+#kereso{
+    padding: 12px;
+    width: 260px;
+    border: 1px solid #aac;
+}
+#talalatok{
+    padding-left: 20px;
+}
+#talalatok li{
+    margin:8px 0;
+    color:#173b5b;
+}
+body{
+    background-color: white;
+    color: black;
+    transition: 1s;
+}
+body.sotet{
+    background-color: black;
+    color: white;
+    transition: 1s;
+}
