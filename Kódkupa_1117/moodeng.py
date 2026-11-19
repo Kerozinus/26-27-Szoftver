@@ -13,8 +13,26 @@ B = list(map(int, input().strip().split()))
 
 S = list(map(int, input().strip().split()))
 
-Jumps = 0
+lehetetlen = False
 
+Jumps = 0
+posi = 0
+
+def erosseg():
+    global posi, Jumps
+    for ero in range(B[i]):
+        posi += ero
+        Jumps += 1
+for i in range(len(B)):
+    erosseg()
+    if B[posi]==-1:
+        erosseg()
+    else:
+        posi += S[posi]
+    if posi != N - 1:
+        lehetetlen = True
+if lehetetlen:
+    Jumps = -1
 
 # INSERT YOUR CODE HERE
 

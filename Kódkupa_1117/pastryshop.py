@@ -11,16 +11,18 @@ N, K = map(int, input().strip().split())
 
 P = list(map(int, input().strip().split()))
 
-M = N - K
+D = 0
 
-best = P[M -1] - P[0]
-for i in range(1, N-M + 1):
-    D = P[i + M - 1] - P[i]
-    if D < best:
-        best = D
 
 # INSERT YOUR CODE HERE
 
-print(best)
+P.sort()
+m = N - K
+if m <= 1:
+    D = 0
+else:
+    D = min(P[i + m - 1] - P[i] for i in range(N-m+1))
+
+print(D)
 
 sys.stdout.close()
