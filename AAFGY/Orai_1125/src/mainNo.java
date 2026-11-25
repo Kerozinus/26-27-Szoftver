@@ -1,0 +1,92 @@
+class Tanulo2{
+    String nev;
+    int eletkor;
+    void bemutatkozas(){
+        System.out.println("Nevem: "+nev);
+        System.out.println("Életkorom: "+eletkor);
+    }
+}
+public class mainNo {
+    public static void main(String[] args) {
+        Tanulo2 tanulo1 = new Tanulo2();
+        tanulo1.nev = "Balogh András";
+        tanulo1.eletkor = 123;
+        Tanulo2 tanulo2 = new Tanulo2();
+        tanulo2.nev = "Balogh Henrik Norbert";
+        tanulo2.eletkor = 123;
+        Tanulo2 tanulo3 = new Tanulo2();
+        tanulo3.nev = "Bodrogi Balázs Áron";
+        tanulo3.eletkor = 123;
+        Tanulo2 tanulo4 = new Tanulo2();
+        tanulo4.nev = "Gombos Vendel Vencel";
+        tanulo4.eletkor = 123;
+        Tanulo2 tanulo5 = new Tanulo2();
+        tanulo5.nev = "Gulyás János";
+        tanulo5.eletkor = 123;
+        Tanulo2 tanulo6 = new Tanulo2();
+        tanulo6.nev = "Ignáth Benjámin";
+        tanulo6.eletkor = 123;
+        Tanulo2 tanulo7 = new Tanulo2();
+        tanulo7.nev = "Iván Bence";
+        tanulo7.eletkor = 123;
+        Tanulo2 tanulo8 = new Tanulo2();
+        tanulo8.nev = "Karsai Réka Teodóra";
+        tanulo8.eletkor = 123;
+        Tanulo2 tanulo9 = new Tanulo2();
+        tanulo9.nev = "Ródé Lilien Hanna";
+        tanulo9.eletkor = 123;
+        Tanulo2 tanulo10 = new Tanulo2();
+        tanulo10.nev = "Magyari Bálint";
+        tanulo10.eletkor = 123;
+        Tanulo2 tanulo11 = new Tanulo2();
+        tanulo11.nev = "Mudris Balázs";
+        tanulo11.eletkor = 123;
+        Tanulo2 tanulo12 = new Tanulo2();
+        tanulo12.nev = "Nagy Hunor Ákos";
+        tanulo12.eletkor = 123;
+        Tanulo2 tanulo13 = new Tanulo2();
+        tanulo13.nev = "Ramecz Dávid";
+        tanulo13.eletkor = 123;
+        Tanulo2 tanulo14 = new Tanulo2();
+        tanulo14.nev = "Kovács Roxána";
+        tanulo14.eletkor = 123;
+        Tanulo2 tanulo15 = new Tanulo2();
+        tanulo15.nev = "Ruskó Regina Etelka";
+        tanulo15.eletkor = 123;
+        Tanulo2 tanulo16 = new Tanulo2();
+        tanulo16.nev = "Szabó Zsolt Kristóf";
+        tanulo16.eletkor = 123;
+        Tanulo2 tanulo20 = new Tanulo2();
+        tanulo20.nev = "Szabó Zsombor Márk";
+        tanulo20.eletkor = 123;
+        Tanulo2 tanulo17 = new Tanulo2();
+        tanulo17.nev = "Szilágyi Kristóf István";
+        tanulo17.eletkor = 123;
+        Tanulo2 tanulo18 = new Tanulo2();
+        tanulo18.nev = "Terebesi Márk Lóránt";
+        tanulo18.eletkor = 123;
+        Tanulo2 tanulo19 = new Tanulo2();
+        tanulo19.nev = "Zámbó Krisztofer";
+        tanulo19.eletkor = 123;
+        tanulo1.bemutatkozas();
+        tanulo2.bemutatkozas();
+        tanulo3.bemutatkozas();
+        tanulo4.bemutatkozas();
+        tanulo5.bemutatkozas();
+        tanulo6.bemutatkozas();
+        tanulo7.bemutatkozas();
+        tanulo8.bemutatkozas();
+        tanulo9.bemutatkozas();
+        tanulo10.bemutatkozas();
+        tanulo11.bemutatkozas();
+        tanulo12.bemutatkozas();
+        tanulo13.bemutatkozas();
+        tanulo14.bemutatkozas();
+        tanulo15.bemutatkozas();
+        tanulo16.bemutatkozas();
+        tanulo17.bemutatkozas();
+        tanulo18.bemutatkozas();
+        tanulo19.bemutatkozas();
+        tanulo20.bemutatkozas();
+    }
+}
