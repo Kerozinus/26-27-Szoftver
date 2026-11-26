@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kincskereső robot – Robotszimulátor</title>
+  <meta name="description" content="MineScript robotszimulátor: programozd a kincskereső robotot, és gyűjts minél több aranyat a bányában!">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23221d16'/%3E%3Cpath d='M16 5l9 9-9 13-9-13z' fill='%23f2c14e'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Ugrás a tartalomhoz</a>
+
+  <!-- Képernyőolvasóknak szóló bejelentések -->
+  <div id="announcer" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- ===================== BEJELENTKEZÉS ===================== -->
+  <div id="view-auth" class="auth-screen" hidden>
+    <main class="auth-card" id="main-auth">
+      <div class="brand brand-large">
+        <span class="brand-icon" aria-hidden="true">◆</span>
+        <div>
+          <h1>Kincskereső robot</h1>
+          <p class="muted">Programozd a robotot MineScriptben, és gyűjts aranyat a bányában!</p>
+        </div>
+      </div>
+
+      <div class="tabs" role="tablist" aria-label="Belépés vagy regisztráció">
+        <button type="button" role="tab" id="tab-login" aria-selected="true" aria-controls="form-login">Bejelentkezés</button>
+        <button type="button" role="tab" id="tab-register" aria-selected="false" aria-controls="form-register" tabindex="-1">Regisztráció</button>
+      </div>
+
+      <form id="form-login" role="tabpanel" aria-labelledby="tab-login" novalidate>
+        <div class="field">
+          <label for="login-username">Felhasználónév</label>
+          <input id="login-username" name="username" autocomplete="username" required>
+        </div>
+        <div class="field">
+          <label for="login-password">Jelszó</label>
+          <input id="login-password" name="password" type="password" autocomplete="current-password" required>
+        </div>
+        <p class="form-error" role="alert" hidden></p>
+        <button class="btn btn-primary btn-block" type="submit">Belépés</button>
+        <details class="demo-accounts">
+          <summary>Bemutató fiókok</summary>
+          <ul>
+            <li><button type="button" class="link-btn" data-demo="anna" data-pass="anna123">anna / anna123</button></li>
+            <li><button type="button" class="link-btn" data-demo="bela" data-pass="bela123">bela / bela123</button></li>
+            <li><button type="button" class="link-btn" data-demo="admin" data-pass="admin123">admin / admin123</button> (adminisztrátor)</li>
+          </ul>
+        </details>
+      </form>
+
+      <form id="form-register" role="tabpanel" aria-labelledby="tab-register" hidden novalidate>
+        <div class="field">
+          <label for="reg-username">Felhasználónév</label>
+          <input id="reg-username" name="username" autocomplete="username" required minlength="3" maxlength="30" aria-describedby="reg-username-hint">
+          <small id="reg-username-hint" class="hint">3–30 karakter: betű, szám, pont, kötőjel, aláhúzás.</small>
+        </div>
+        <div class="field">
+          <label for="reg-password">Jelszó</label>
+          <input id="reg-password" name="password" type="password" autocomplete="new-password" required minlength="6" aria-describedby="reg-password-hint">
+          <small id="reg-password-hint" class="hint">Legalább 6 karakter.</small>
+        </div>
+        <div class="field">
+          <label for="reg-password2">Jelszó még egyszer</label>
+          <input id="reg-password2" name="password2" type="password" autocomplete="new-password" required>
+        </div>
+        <p class="form-error" role="alert" hidden></p>
+        <button class="btn btn-primary btn-block" type="submit">Regisztráció és belépés</button>
+      </form>
+    </main>
+  </div>
+
+  <!-- ===================== ALKALMAZÁS ===================== -->
+  <div id="view-app" hidden>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-icon" aria-hidden="true">◆</span>
+        <span class="brand-name">Kincskereső robot</span>
+      </div>
+      <nav aria-label="Fő menü">
+        <ul class="nav">
+          <li><a href="#jatek" data-view="game">Játék</a></li>
+          <li><a href="#terkepek" data-view="editor">Térképszerkesztő</a></li>
+          <li><a href="#ranglista" data-view="leaderboard">Ranglista</a></li>
+          <li><a href="#sugo" data-view="help">Súgó</a></li>
+        </ul>
+      </nav>
+      <div class="userbox">
+        <span class="user-name" id="user-name"></span>
+        <button type="button" class="btn btn-ghost btn-sm" id="btn-logout">Kijelentkezés</button>
+      </div>
+    </header>
+
+    <main id="main" tabindex="-1">
+
+      <!-- ---------- JÁTÉK ---------- -->
+      <section id="view-game" class="view" aria-labelledby="game-title" hidden>
+        <h1 id="game-title" class="sr-only">Játék</h1>
+        <div class="game-layout">
+
+          <section class="panel map-panel" aria-labelledby="map-panel-title">
+            <div class="panel-head">
+              <h2 id="map-panel-title">Térkép</h2>
+              <div class="inline-field">
+                <label for="game-map">Pálya</label>
+                <select id="game-map"></select>
+              </div>
+            </div>
+
+            <div class="stats" role="group" aria-label="Futás állapota">
+              <div class="stat"><span class="stat-label">Arany</span><span class="stat-value" id="stat-gold">0</span></div>
+              <div class="stat"><span class="stat-label">Lépés</span><span class="stat-value" id="stat-steps">0</span><span class="stat-sub">/ 1000</span></div>
+              <div class="stat"><span class="stat-label">Irány</span><span class="stat-value" id="stat-dir">–</span></div>
+              <div class="stat"><span class="stat-label">Állapot</span><span class="stat-value" id="stat-status">Kész</span></div>
+            </div>
+
+            <div class="map-stage">
+              <div id="game-grid" class="grid" role="img" aria-label="Térkép"></div>
+            </div>
+
+            <div class="map-legend" aria-hidden="true">
+              <span><i class="lg lg-robot"></i>Robot</span>
+              <span><i class="lg lg-gold"></i>Arany</span>
+              <span><i class="lg lg-wall"></i>Fal</span>
+              <span><i class="lg lg-seen"></i>Felfedezett</span>
+              <span><i class="lg lg-fog"></i>Feltáratlan</span>
+            </div>
+            <label class="check">
+              <input type="checkbox" id="opt-darkness"> Teljes sötétség (a feltáratlan mezők tartalma rejtett)
+            </label>
+
+            <div class="controls" role="group" aria-label="Futtatás vezérlése">
+              <button type="button" class="btn btn-primary" id="btn-run"><span aria-hidden="true">▶</span> Futtatás</button>
+              <button type="button" class="btn" id="btn-pause" disabled><span aria-hidden="true">❚❚</span> Szünet</button>
+              <button type="button" class="btn" id="btn-step"><span aria-hidden="true">⏭</span> Lépés</button>
+              <button type="button" class="btn btn-danger" id="btn-stop" disabled><span aria-hidden="true">■</span> Leállítás</button>
+              <button type="button" class="btn" id="btn-reset"><span aria-hidden="true">↺</span> Alaphelyzet</button>
+            </div>
+            <div class="speed">
+              <label for="speed">Sebesség</label>
+              <input type="range" id="speed" min="1" max="6" value="3" aria-valuetext="közepes">
+              <output id="speed-label" for="speed">közepes</output>
+            </div>
+
+            <div id="run-result" class="result-box" role="status" hidden></div>
+          </section>
+
+          <section class="panel code-panel" aria-labelledby="code-panel-title">
+            <div class="panel-head">
+              <h2 id="code-panel-title">Program</h2>
+              <span class="program-name" id="program-name">Névtelen program</span>
+            </div>
+            <div class="toolbar" role="toolbar" aria-label="Program műveletek">
+              <button type="button" class="btn btn-sm" id="btn-new-program">Új</button>
+              <button type="button" class="btn btn-sm" id="btn-open-program">Megnyitás…</button>
+              <button type="button" class="btn btn-sm" id="btn-save-program">Mentés</button>
+              <button type="button" class="btn btn-sm" id="btn-import-program">Importálás fájlból</button>
+              <button type="button" class="btn btn-sm" id="btn-export-program">Exportálás fájlba</button>
+              <button type="button" class="btn btn-sm" id="btn-check">Ellenőrzés</button>
+              <input type="file" id="file-program" accept=".txt,.ms,.minescript,text/plain" hidden>
+            </div>
+
+            <div class="editor" id="editor">
+              <div class="gutter" id="gutter" aria-hidden="true"></div>
+              <div class="code-area">
+                <div class="code-highlights" id="code-highlights" aria-hidden="true"></div>
+                <textarea id="code" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off"
+                          aria-label="MineScript programkód" aria-describedby="editor-hint syntax-status"></textarea>
+              </div>
+            </div>
+            <p id="editor-hint" class="hint">A Tab két szóközt szúr be. A szerkesztőből az Esc, majd a Tab billentyűvel léphetsz tovább.</p>
+            <div id="syntax-status" class="syntax-status" aria-live="polite"></div>
+
+            <div class="sub-panels">
+              <section aria-labelledby="console-title">
+                <div class="sub-head">
+                  <h3 id="console-title">Konzol</h3>
+                  <button type="button" class="btn btn-ghost btn-sm" id="btn-clear-console">Törlés</button>
+                </div>
+                <pre id="console" class="console" tabindex="0" aria-label="Konzol kimenet" aria-live="polite"></pre>
+              </section>
+              <section aria-labelledby="vars-title">
+                <h3 id="vars-title">Változók</h3>
+                <div id="vars" class="vars"><p class="muted">Még nincs változó.</p></div>
+              </section>
+            </div>
+
+            <section aria-labelledby="myruns-title" class="myruns">
+              <h3 id="myruns-title">Saját futtatásaim ezen a pályán</h3>
+              <div id="my-runs"><p class="muted">Még nincs futtatásod ezen a pályán.</p></div>
+            </section>
+          </section>
+        </div>
+      </section>
+
+      <!-- ---------- TÉRKÉPSZERKESZTŐ ---------- -->
+      <section id="view-editor" class="view" aria-labelledby="editor-title" hidden>
+        <div class="editor-layout">
+          <aside class="panel map-list-panel" aria-labelledby="maplist-title">
+            <div class="panel-head">
+              <h2 id="maplist-title">Térképek</h2>
+            </div>
+            <div class="toolbar">
+              <button type="button" class="btn btn-sm btn-primary" id="btn-map-new">Új térkép</button>
+              <button type="button" class="btn btn-sm" id="btn-map-import">Importálás fájlból</button>
+              <input type="file" id="file-map" accept=".txt,text/plain" hidden>
+            </div>
+            <ul id="map-list" class="map-list"></ul>
+          </aside>
+
+          <section class="panel map-edit-panel" aria-labelledby="editor-title">
+            <div class="panel-head">
+              <h2 id="editor-title">Térképszerkesztő</h2>
+              <span class="muted" id="map-edit-owner"></span>
+            </div>
+
+            <div class="edit-fields">
+              <div class="field">
+                <label for="map-name">Név</label>
+                <input id="map-name" maxlength="60" required>
+              </div>
+              <div class="field field-small">
+                <label for="map-rows">Sorok</label>
+                <input id="map-rows" type="number" min="1" max="15" value="8" inputmode="numeric">
+              </div>
+              <div class="field field-small">
+                <label for="map-cols">Oszlopok</label>
+                <input id="map-cols" type="number" min="1" max="15" value="10" inputmode="numeric">
+              </div>
+            </div>
+
+            <fieldset class="palette">
+              <legend>Eszköz (vagy billentyűvel: 1–4 mező, R robot, nyíllal mozgás, szóköz/Enter rajzol)</legend>
+              <label><input type="radio" name="tool" value="."> <i class="sw sw-empty" aria-hidden="true"></i> Üres kamra <kbd>1</kbd></label>
+              <label><input type="radio" name="tool" value="@"> <i class="sw sw-gold" aria-hidden="true"></i> Arany <kbd>2</kbd></label>
+              <label><input type="radio" name="tool" value="#" checked> <i class="sw sw-wall" aria-hidden="true"></i> Fal <kbd>3</kbd></label>
+              <label><input type="radio" name="tool" value="robot"> <i class="sw sw-robot" aria-hidden="true"></i> Robot <kbd>4</kbd></label>
+              <span class="inline-field">
+                <label for="robot-dir">Robot iránya</label>
+                <select id="robot-dir">
+                  <option value=">">kelet (&gt;)</option>
+                  <option value="<">nyugat (&lt;)</option>
+                  <option value="^">észak (^)</option>
+                  <option value="v">dél (v)</option>
+                </select>
+              </span>
+            </fieldset>
+
+            <div class="map-stage">
+              <div id="edit-grid" class="grid grid-edit" role="grid" aria-label="Szerkeszthető térkép"></div>
+            </div>
+
+            <div id="map-validation" class="validation" aria-live="polite"></div>
+
+            <div class="toolbar">
+              <button type="button" class="btn btn-primary" id="btn-map-save">Mentés</button>
+              <button type="button" class="btn" id="btn-map-saveas">Mentés újként</button>
+              <button type="button" class="btn" id="btn-map-export">Exportálás fájlba</button>
+              <button type="button" class="btn" id="btn-map-play">Kipróbálom</button>
+              <button type="button" class="btn" id="btn-map-fill">Kitöltés üressel</button>
+              <button type="button" class="btn" id="btn-map-border">Fal keret</button>
+              <button type="button" class="btn btn-danger" id="btn-map-delete">Törlés</button>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <!-- ---------- RANGLISTA ---------- -->
+      <section id="view-leaderboard" class="view" aria-labelledby="lb-title" hidden>
+        <div class="panel">
+          <div class="panel-head">
+            <h2 id="lb-title">Ranglista</h2>
+            <div class="inline-field">
+              <label for="lb-map">Pálya</label>
+              <select id="lb-map"></select>
+            </div>
+          </div>
+          <label class="check"><input type="checkbox" id="lb-all"> Minden futtatás mutatása (nem csak a legjobb játékosonként)</label>
+          <p class="muted">Előrébb áll, aki több aranyat gyűjtött; azonos aranynál a kevesebb lépés a jobb.</p>
+          <div id="lb-table" class="table-wrap"></div>
+        </div>
+      </section>
+
+      <!-- ---------- SÚGÓ ---------- -->
+      <section id="view-help" class="view" aria-labelledby="help-title" hidden>
+        <article class="panel help">
+          <h2 id="help-title">Súgó – a MineScript nyelv</h2>
+          <p>A robot soronként hajtja végre a programot. Minden sor egy utasítás, a blokkokat (az <code>if</code>, <code>else</code> és <code>while</code> törzsét) szóközös behúzás jelöli. Üres sor és tabulátor nem lehet a programban, a szavak között pontosan egy szóköz áll.</p>
+          <h3>Robotparancsok</h3>
+          <dl>
+            <dt><code>step forward n</code></dt><dd>n mezőt lép előre. Falba vagy a térképen kívülre nem léphet.</dd>
+            <dt><code>turn by n</code></dt><dd>n negyedfordulatot fordul balra (az óramutatóval ellentétesen). A <code>turn by 3</code> tehát jobbra fordulás.</dd>
+            <dt><code>mine here</code></dt><dd>Kibányássza az aranyat abban a mezőben, ahol áll.</dd>
+            <dt><code>isThere w</code></dt><dd>Megnézi a robot előtti mezőt: 0 = üres kamra, 1 = fal (a térkép széle is falnak számít), 2 = arany. Az eredmény <code>true</code> vagy <code>false</code>. Csak <code>set</code> utasításban használható: <code>set van to isThere 2</code>.</dd>
+            <dt><code>print x</code></dt><dd>Kiírja az értéket a konzolra.</dd>
+          </dl>
+          <h3>Változók és műveletek</h3>
+          <p><code>set x to érték</code> – az érték lehet egy szám (0–100), <code>true</code>/<code>false</code>, egy változó, <code>isThere w</code>, <code>not a</code> vagy egy művelet: <code>a + b</code>, <code>a - b</code>, <code>a * b</code>, <code>a = b</code>, <code>a &lt;&gt; b</code>, <code>a &lt; b</code>, <code>a &lt;= b</code>, <code>a &gt; b</code>, <code>a &gt;= b</code>, <code>a and b</code>, <code>a or b</code>. Egy sorban legfeljebb egy művelet állhat.</p>
+          <p>A változó típusa (egész vagy logikai) az első értékadáskor rögzül. A feltétel (<code>if x</code>, <code>while x</code>) csak egy logikai értékű változó vagy literál lehet.</p>
+          <h3>Példa</h3>
+          <pre class="code-sample">set count to 0
+set fal to isThere 1
+set megy to not fal
+while megy
+  set arany to isThere 2
+  if arany
+    step forward 1
+    mine here
+    set count to count + 1
+  else
+    step forward 1
+  set fal to isThere 1
+  set megy to not fal
+print count</pre>
+          <p><button type="button" class="btn btn-sm" id="btn-load-sample">Példa betöltése a szerkesztőbe</button></p>
+          <h3>Lépések és ranglista</h3>
+          <p>Minden végrehajtott sor egy lépésnek számít. A ciklus törzse minden körben újra számít, a <code>while</code> sora minden feltétel-ellenőrzéskor. Az <code>else</code> sora csak akkor számít, ha az else-ág lefut. Legfeljebb 1000 sor hajtható végre.</p>
+          <p>Minden befejezett futtatás eredménye a ranglistára kerül. A szerver maga is lefuttatja a programot, így csak a valódi eredmény számít. A leállított futtatások nem kerülnek be.</p>
+          <h3>Futásidejű hibák</h3>
+          <dl id="help-errors"></dl>
+          <h3>Billentyűparancsok</h3>
+          <ul>
+            <li><kbd>Ctrl</kbd> + <kbd>Enter</kbd> – futtatás / szünet / folytatás</li>
+            <li><kbd>Ctrl</kbd> + <kbd>S</kbd> – program mentése</li>
+            <li><kbd>Tab</kbd> a kódszerkesztőben – két szóköz; <kbd>Esc</kbd>, majd <kbd>Tab</kbd> – kilépés a szerkesztőből</li>
+          </ul>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <!-- Programok megnyitása -->
+  <dialog id="dlg-programs" aria-labelledby="dlg-programs-title">
+    <form method="dialog" class="dialog-body">
+      <h2 id="dlg-programs-title">Program megnyitása</h2>
+      <div id="dlg-programs-list" class="dialog-list"></div>
+      <div class="dialog-actions">
+        <button class="btn" value="cancel">Bezárás</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Program mentése -->
+  <dialog id="dlg-save" aria-labelledby="dlg-save-title">
+    <form method="dialog" class="dialog-body" id="form-save">
+      <h2 id="dlg-save-title">Program mentése</h2>
+      <div class="field">
+        <label for="save-name">A program neve</label>
+        <input id="save-name" maxlength="60" required>
+      </div>
+      <p class="hint">Azonos nevű saját program esetén felülírja azt.</p>
+      <div class="dialog-actions">
+        <button class="btn" value="cancel" formnovalidate>Mégse</button>
+        <button class="btn btn-primary" value="ok">Mentés</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toasts" class="toasts" aria-live="assertive"></div>
+
+  <script src="js/minescript.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

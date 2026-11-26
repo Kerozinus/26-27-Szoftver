@@ -1,0 +1,2 @@
+# A könyvtárban csak beemelt (require) PHP osztályok vannak, közvetlenül nem érhetők el.
+Require all denied
