@@ -8,10 +8,13 @@
  * követi; a tests/cases.json tesztesetei mindkettőn lefutnak.
  */
 (function (root, factory) {
+
   const api = factory();
+
   if (typeof module === 'object' && module.exports) {
     module.exports = api;
-  } else {
+
+  } else { //hibakezeles
     root.MineScript = api;
   }
 })(typeof self !== 'undefined' ? self : this, function () {
@@ -69,93 +72,255 @@
     if (typeof text !== 'string') {
       return { ok: false, errors: [{ line: null, message: 'A térkép nem szöveg.' }] };
     }
+
     let src = text.replace(/^﻿/, '').replace(/\r\n?/g, '\n');
     src = src.replace(/\n+$/, '');
+
     if (src.trim() === '') {
       return { ok: false, errors: [{ line: null, message: 'A térképfájl üres.' }] };
     }
+
     const lines = src.split('\n').map((l) => l.replace(/[ \t]+$/, ''));
     const errors = [];
 
     const head = /^(\d+) (\d+)$/.exec(lines[0]);
+
     if (!head) {
       return {
         ok: false,
         errors: [{ line: 1, message: 'Az első sorban a térkép méretének kell állnia két, egy szóközzel elválasztott egész számként (pl. „3 15”).' }],
       };
     }
+
     const rows = parseInt(head[1], 10);
     const cols = parseInt(head[2], 10);
+
     if (rows < MAP_MIN || rows > MAP_MAX || cols < MAP_MIN || cols > MAP_MAX) {
       return { ok: false, errors: [{ line: 1, message: `A térkép mindkét mérete ${MAP_MIN} és ${MAP_MAX} között kell legyen (megadva: ${rows} × ${cols}).` }] };
     }
+
     const body = lines.slice(1);
+
     if (body.length !== rows) {
       errors.push({ line: null, message: `A fejléc szerint ${rows} sornak kellene lennie, de ${body.length} sor található.` });
     }
+
     const grid = [];
+
     for (let i = 0; i < Math.min(body.length, MAP_MAX + 5); i++) {
+      
       const line = body[i];
       const lineNo = i + 2;
+      
       if (line.length !== cols) {
         errors.push({ line: lineNo, message: `A sor hossza ${line.length}, de ${cols} karakternek kellene lennie.` });
       }
+      
       for (let c = 0; c < line.length; c++) {
+
         if ('.@#<>^v'.indexOf(line[c]) === -1) {
+
           errors.push({ line: lineNo, message: `Ismeretlen karakter: „${line[c]}” (${c + 1}. oszlop). Megengedett: . @ # > < ^ v` });
           break;
+
         }
       }
+
       grid.push(line);
+
     }
+
     if (errors.length === 0) {
+
       errors.push(...validateGrid(rows, cols, grid));
+    
     }
+
     if (errors.length) return { ok: false, errors };
+
     return { ok: true, map: { rows, cols, grid } };
+  
   }
+
 
   /** Egy már rácsként megadott térkép szabályainak ellenőrzése (szerkesztő is használja). */
+
   function validateGrid(rows, cols, grid) {
+
+    // Létrehozunk egy üres tömböt, amelyben a térképpel kapcsolatos hibákat tároljuk.
     const errors = [];
+
+
+    // KORLÁTOK ELLENŐRZÉSE | EGESZ SZAM E
+
     if (!Number.isInteger(rows) || !Number.isInteger(cols) ||
         rows < MAP_MIN || rows > MAP_MAX || cols < MAP_MIN || cols > MAP_MAX) {
-      errors.push({ line: null, message: `A térkép mindkét mérete ${MAP_MIN} és ${MAP_MAX} között kell legyen.` });
+
+      //Hibauzenet
+      
+      errors.push({
+        line: null,
+        message: `A térkép mindkét mérete ${MAP_MIN} és ${MAP_MAX} között kell legyen.`
+      });
+
       return errors;
+
     }
+
+    // HIBAKEZELÉS – A SOROK SZÁMÁNAK ELLENŐRZÉSE
+
     if (!Array.isArray(grid) || grid.length !== rows) {
-      errors.push({ line: null, message: 'A térkép sorainak száma nem egyezik a mérettel.' });
+
+      // Ha nem megfelelő a sorok száma, hibaüzenetet adunk hozzá.
+      errors.push({
+        line: null,
+        message: 'A térkép sorainak száma nem egyezik a mérettel.'
+      });
+
       return errors;
     }
+
+
+    // ROBOTOK SZÁMOLÁSA
+
     let robots = 0;
+
+    // A TÉRKÉP SORAINAK ÉS MEZŐINEK ELLENŐRZÉSE
+
+    // A külső for ciklus végigmegy a térkép összes során.
+    // Az r változó az aktuális sor sorszámát tárolja.
+    // Az r = 0 miatt az első sortól kezdjük az ellenőrzést.
     for (let r = 0; r < rows; r++) {
+
+      // Ellenőrizzük, hogy az aktuális sor szöveg (string) típusú-e,
+      // és hogy a sor hossza megegyezik-e a megadott oszlopszámmal.
       if (typeof grid[r] !== 'string' || grid[r].length !== cols) {
-        errors.push({ line: null, message: `A(z) ${r + 1}. sor hossza hibás.` });
+
+        // Ha a sor nem megfelelő hosszúságú, hibaüzenetet adunk hozzá.
+        // Az r + 1 azért szükséges, mert a tömb indexelése 0-tól kezdődik,
+        // de a felhasználónak 1-től szeretnénk megjeleníteni a sorszámot.
+        errors.push({
+          line: null,
+          message: `A(z) ${r + 1}. sor hossza hibás.`
+        });
+
+        // Visszaadjuk a hibát, és leállítjuk a függvény futását.
         return errors;
       }
+
+
+      // A belső for ciklus végigmegy az aktuális sor összes oszlopán.
+      // A c változó az aktuális oszlop indexét jelöli.
       for (let c = 0; c < cols; c++) {
+
+        // Kiolvassuk az aktuális mező karakterét a grid tömbből.
+        // A grid[r] kiválasztja az aktuális sort,
+        // a [c] pedig az adott sor megfelelő karakterét.
         const ch = grid[r][c];
+
+
+        // ÉRVÉNYTELEN KARAKTER ELLENŐRZÉSE
+
+        // Megnézzük, hogy az aktuális karakter megtalálható-e
+        // az engedélyezett karaktereket tartalmazó szövegben.
+        // Engedélyezett karakterek: . @ # < > ^ v
+        // Az indexOf() -1 értéket ad vissza, ha nem találja a karaktert.
         if ('.@#<>^v'.indexOf(ch) === -1) {
-          errors.push({ line: null, message: `Érvénytelen mező a(z) ${r + 1}. sor ${c + 1}. oszlopában.` });
+
+          // Ha a karakter nem szerepel az engedélyezettek között,
+          // hozzáadunk egy hibaüzenetet.
+          // Az r + 1 és c + 1 miatt a sor és oszlop számozása 1-től indul.
+          errors.push({
+            line: null,
+            message: `Érvénytelen mező a(z) ${r + 1}. sor ${c + 1}. oszlopában.`
+          });
+
+          // Visszaadjuk a hibát, és befejezzük a függvény futását.
           return errors;
         }
-        if (DIR_CHARS.indexOf(ch) !== -1) robots++;
+
+
+        // ROBOTOK MEGSZÁMOLÁSA
+
+        // Megnézzük, hogy az aktuális karakter szerepel-e a DIR_CHARS változóban.
+        // Ez a változó tartalmazza a robot lehetséges irányait:
+        // > jobbra, < balra, ^ felfelé, v lefelé.
+        if (DIR_CHARS.indexOf(ch) !== -1) {
+
+          // Ha az aktuális karakter robotot jelöl,
+          // eggyel növeljük a robots változó értékét.
+          robots++;
+        }
       }
     }
-    if (robots === 0) errors.push({ line: null, message: 'A térképen nincs robot. Pontosan egy robotot (>, <, ^, v) kell elhelyezni.' });
-    if (robots > 1) errors.push({ line: null, message: `A térképen ${robots} robot van, de pontosan egynek kell lennie.` });
+
+
+    // A ROBOTOK SZÁMÁNAK ELLENŐRZÉSE
+
+    // Ha a robots értéke 0, akkor egyetlen robot sincs a térképen.
+    // Ebben az esetben hibaüzenetet adunk hozzá.
+    if (robots === 0) {
+      errors.push({
+        line: null,
+        message: 'A térképen nincs robot. Pontosan egy robotot (>, <, ^, v) kell elhelyezni.'
+      });
+    }
+
+    // Ha a robots értéke nagyobb, mint 1,
+    // akkor több robot található a térképen, mint amennyi megengedett.
+    if (robots > 1) {
+      // A ${robots} segítségével a hibaüzenetben megjelenítjük
+      // a megtalált robotok tényleges számát.
+      errors.push({
+        line: null,
+        message: `A térképen ${robots} robot van, de pontosan egynek kell lennie.`
+      });
+    }
+
+    // A függvény végén visszaadjuk az errors tömböt.
+    // Ha nem találtunk hibát, akkor egy üres tömböt kapunk vissza.
     return errors;
-  }
+}
 
-  function serializeMap(map) {
+
+// TÉRKÉP SZÖVEGGÉ ALAKÍTÁSA
+
+function serializeMap(map) {
+
+    // A térkép adatait egyetlen szöveges formátummá alakítjuk.
+    // Először kiírjuk a sorok és oszlopok számát.
+    // A \n sortörést jelent.
+    // A map.grid.join('\n') összefűzi a térkép sorait úgy,
+    // hogy minden sor közé egy sortörés kerül.
+    // Az utolsó \n egy sortörést tesz a szöveg végére.
     return `${map.rows} ${map.cols}\n${map.grid.join('\n')}\n`;
-  }
+}
 
-  function countGold(map) {
+
+// ARANYAK MEGSZÁMOLÁSA
+
+function countGold(map) {
+
+    // Létrehozunk egy n változót, amely az aranyak számát tárolja.
+    // Kezdetben 0, mert még nem számoltunk meg egyetlen aranyat sem.
     let n = 0;
-    for (const row of map.grid) for (const ch of row) if (ch === CELL_GOLD) n++;
+
+    // A külső for...of ciklus végigmegy a térkép összes sorában.
+    for (const row of map.grid)
+
+      // A belső for...of ciklus végigmegy az aktuális sor összes karakterén.
+      for (const ch of row)
+
+        // Megnézzük, hogy az aktuális karakter megegyezik-e
+        // a CELL_GOLD változóban tárolt arany karakterével.
+        if (ch === CELL_GOLD)
+
+          // Ha igen, eggyel növeljük az aranyak számát.
+          n++;
+
+    // Visszaadjuk a megszámolt aranyak darabszámát.
     return n;
-  }
+}
 
   // ---------------------------------------------------------------------------
   // Szintaktikai elemzés
