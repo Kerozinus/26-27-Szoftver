@@ -314,125 +314,110 @@ function countGold(map) {
         throw new MineScriptSyntaxError(line, `A(z) ${tok} szám kívül esik a megengedett 0–${MAX_LITERAL} tartományon.`);
       }
       
-      // Egységes objektumként adjuk vissza: a kind jelzi a típust, a value az értéket.
-      // Példa: "25" -> { kind: 'int', value: 25 }.
       return { kind: 'int', value };
     }
 
-    // 2. eset: a két megengedett logikai literális valamelyike.
-    // A token szövegét valódi JavaScript true/false értékké alakítjuk.
+    //token szoveget js nyelvre
     if (tok === 'true' || tok === 'false') return { kind: 'bool', value: tok === 'true' };
 
-    // 3. eset: változónév. Betűvel kell kezdődnie, utána betűk és számok jöhetnek.
+    // ha betuvel kezdodik
     if (/^[A-Za-z][A-Za-z0-9]*$/.test(tok)) {
-      // A kulcsszavakat kisbetűsítve hasonlítjuk össze, ezért pl. az "IF" sem
-      // használható változónévként, noha a nyelvi utasítások kis-/nagybetűsek.
+
+      // kisbetusitve
       if (KEYWORDS_LOWER.has(tok.toLowerCase())) {
+
         throw new MineScriptSyntaxError(line, `„${tok}” itt nem állhat: kulcsszó, ezért nem használható értékként vagy változónévként.`);
+      
       }
-      // Nem az aktuális változóértéket adjuk vissza, csak a változó nevét.
-      // A tényleges érték kiolvasása majd futás közben, a read() függvényben történik.
+
       return { kind: 'var', name: tok };
     }
 
-    // Ha egyik fenti forma sem illik rá, a token nem lehet egyszerű érték.
+    //nem ervenyes
     throw new MineScriptSyntaxError(line, `„${tok}” nem érvényes érték (változónév, 0–100 közötti szám, true vagy false várható).`);
+  
   }
 
-  // Változónév ellenőrzése; a név betűvel kezdődik és csak betű/szám lehet benne.
+  // Változónév ellenorzese
   function parseIdent(tok, line) {
-    // Külön függvény ellenőrzi a változó nevét, mert a set utasításban
-    // a névnek szigorú szabályoknak kell megfelelnie.
 
-    // Ha nincs ilyen token, akkor a sorból teljesen kimaradt a változónév.
+    // ha nincs token, hiba
     if (tok === undefined) throw new MineScriptSyntaxError(line, 'Hiányzik a változó neve.');
 
-    // A név első karaktere angol betű, a további karakterek angol betűk
-    // vagy számjegyek lehetnek. Például: score1 jó, 1score vagy my_score nem jó.
+    // ha nem betuvel kezdodik, vagy nem csak betu es szamjegy van benne, hiba
     if (!/^[A-Za-z][A-Za-z0-9]*$/.test(tok)) {
       throw new MineScriptSyntaxError(line, `„${tok}” nem érvényes változónév (betűvel kell kezdődnie, csak betűt és számjegyet tartalmazhat).`);
     }
 
-    // Egy nyelvi kulcsszó nem lehet változónév, mert akkor a parser nem tudná
-    // egyértelműen eldönteni, hogy utasításról vagy változóról van-e szó.
+    // ha kulcsszo valtozonev, hiba
     if (KEYWORDS_LOWER.has(tok.toLowerCase())) {
       throw new MineScriptSyntaxError(line, `„${tok}” kulcsszó, nem használható változónévként.`);
     }
 
-    // Ha minden ellenőrzés sikerült, visszaadjuk a nevet változatlanul.
     return tok;
   }
 
-  // Ellenőrzi, hogy az utasításban pontosan a szükséges tokenek száma szerepel-e.
+  // utasitasban a szukseges tokenek szama szerepel - e
   function expectCount(tokens, n, line, usage) {
-    // A tokens az adott sor szóközök mentén szétválasztott elemeinek tömbje.
-    // Ez a segédfüggvény azt nézi meg, hogy pontosan n darab elem van-e benne.
-    // Például a "mine here" két tokenből áll, ezért ott n = 2.
+    // ha nem n db token van, hiba
     if (tokens.length !== n) {
-      // Nem próbáljuk kitalálni, mit szeretett volna írni a felhasználó:
-      // megadjuk a helyes utasításformát.
+    
       throw new MineScriptSyntaxError(line, `Hibás utasítás. Helyes alak: ${usage}`);
+    
     }
   }
 
-  // Egy adott token helyén a megadott kulcsszót várja.
   function expectKeyword(tokens, i, kw, line, usage) {
-    // A megadott i indexű helyen pontosan a kw kulcsszót várjuk.
-    // Például a "step forward 3" sorban az 1-es indexű tokennek "forward"-nak kell lennie.
+    // ha az adott helyen nem az adott kulcsszo van, hiba
     if (tokens[i] !== kw) {
-      // Ha van ott valamilyen token, azt is beleírjuk a hibaüzenetbe;
-      // ha nincs, akkor egyszerűen jelezzük, hogy hiányzik a kulcsszó.
+    
       throw new MineScriptSyntaxError(line, `„${kw}” kulcsszó várható${tokens[i] !== undefined ? `, de „${tokens[i]}” áll itt` : ''}. Helyes alak: ${usage}`);
+    
     }
   }
 
-  // A set utasítás értékét/kifejezését dolgozza fel, legfeljebb egy operátorral.
   function parseCalculated(tokens, line) {
-    // Ez a függvény a set utasítás "to" utáni részét értelmezi.
-    // A tokens itt már csak a kifejezés elemeit tartalmazza.
-    // A nyelv egyszerű kifejezéseket enged: nincs zárójelezés és nincs több
-    // egymásba ágyazott művelet egy soron belül. Legfeljebb egy operátor lehet.
 
-    // 0 token: a "set x to" után semmilyen érték nem következik.
+    // ha a "set x to" után semmilyen érték nem következik.
     if (tokens.length === 0) throw new MineScriptSyntaxError(line, 'A „to” után hiányzik az érték.');
 
-    // 1 token: egyetlen érték vagy változó szerepel.
-    // Például: set x to 5 vagy set x to flag.
+    // ha a "set x to" utan egy token van
     if (tokens.length === 1) {
-      // Az isThere és a not önmagukban nem teljesek, mindkettő után kell egy operandus.
+
+      // ha a token isthere v not
       if (tokens[0] === 'isThere' || tokens[0] === 'not') {
         throw new MineScriptSyntaxError(line, `A(z) „${tokens[0]}” után hiányzik a paraméter.`);
       }
-      // A value típusú AST-csomópont azt jelenti, hogy nincs művelet,
-      // csak egy egyszerű értéket kell majd kiolvasni futás közben.
+     
       return { type: 'value', value: parseSimpleval(tokens[0], line) };
     }
 
-    // 2 token: csak az egyoperandusú isThere és not formák megengedettek.
-    // Például: set wall to isThere 1 vagy set active to not ready.
+    // Ha két token van
     if (tokens.length === 2) {
+      
       // Az isThere a robot előtti mező típusát vizsgálja; az arg a vizsgált kód.
       if (tokens[0] === 'isThere') return { type: 'isThere', arg: parseSimpleval(tokens[1], line) };
+
       // A not logikai tagadás; a tényleges bool-típus ellenőrzése futás közben lesz.
       if (tokens[0] === 'not') return { type: 'not', arg: parseSimpleval(tokens[1], line) };
-      // Két tetszőleges tokenből nem állhat össze érvényes kifejezés.
+
       throw new MineScriptSyntaxError(line, 'Két tagú kifejezés csak „isThere x” vagy „not x” lehet.');
     }
 
-    // 3 token: két operandus között pontosan egy operátornak kell állnia.
-    // Példa: set total to a + 3 -> ["a", "+", "3"].
+    //ha 3 token van
     if (tokens.length === 3) {
-      // A középső token lesz a műveleti jel.
+
+      //kozepso token = muveleti jel
       const op = tokens[1];
-      // Megnézzük, hogy a középső token valamelyik ismert operátor-e.
-      // A Set.has() igazat ad vissza, ha az adott elem benne van a halmazban.
+
+      //a muvelet benne van e a muveleti halmazban
       const isOp = ARITH_OPS.has(op) || COMPARE_OPS.has(op) || EQUALITY_OPS.has(op) || LOGIC_OPS.has(op);
+      //nincs benne
       if (!isOp) {
-        // Ismeretlen műveletnél felsoroljuk az összes használható operátort.
         throw new MineScriptSyntaxError(line, `„${op}” nem ismert művelet. Lehetséges: + - * = <> < <= > >= and or`);
       }
-      // AST-t (absztrakt szintaxisfát) készítünk. Ez egy objektum,
-      // amely leírja, mit kell később végrehajtani, de itt még nem számolunk.
+      
+      // AST (absztrakt szintaxisfa) = objektum, ami a kifejezes szerkezetet tarolja
       return {
         type: 'binop', // bináris művelet: két oldala (operandusa) van
         op,             // maga az operátor, például + vagy and
@@ -441,11 +426,16 @@ function countGold(map) {
       };
     }
 
-    // 4 vagy több token esetén a kifejezés túl hosszú. Ez zárja ki például
-    // a "a + b * c" alakot is; a nyelvben soronként csak egy művelet szerepelhet.
+    // 4 vagy tobb token van
     throw new MineScriptSyntaxError(line, 'Túl hosszú kifejezés: egy sorban legfeljebb egy művelet állhat (pl. „a + b”).');
   }
 
+
+
+
+
+
+  
   /** Egy sor (behúzás nélküli) tokenjeiből utasítás-csomópontot készít. */
   // A tokenek első eleme alapján kiválasztja és ellenőrzi az utasítás típusát.
   function parseCommand(tokens, line) {
