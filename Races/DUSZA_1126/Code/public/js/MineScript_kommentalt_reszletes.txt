@@ -1,0 +1,1295 @@
+/*
+ * MineScript – térképkezelés, szintaktikai elemző és futtató.
+ *
+ * Böngészőben a `window.MineScript` objektumon érhető el, Node.js alatt
+ * `require('./minescript.js')`-sel tölthető be (a tesztek így használják).
+ *
+ * A szerveroldali PHP változat (api/lib/MineScript.php) ugyanezt a logikát
+ * követi; a tests/cases.json tesztesetei mindkettőn lefutnak.
+ */
+// A modul azonnal meghívott függvényben fut, így a belső változók nem kerülnek globális névtérbe.
+(function (root, factory) {
+
+  // A factory létrehozza a MineScript publikus API-ját.
+  const api = factory();
+
+  // Node.js CommonJS környezetben a modult exportáljuk.
+  if (typeof module === 'object' && module.exports) {
+    module.exports = api;
+
+  // Böngészőben a root objektumra tesszük ki az API-t; ez nem hibakezelés.
+  } else { //hibakezeles
+    root.MineScript = api;
+  }
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  // ---------------------------------------------------------------------------
+  // Állandók
+  // ---------------------------------------------------------------------------
+
+  // A nyelv fenntartott szavai: ezeket változónévként nem engedjük használni.
+  const KEYWORDS = [
+    'and', 'by', 'else', 'false', 'forward', 'here', 'if', 'isThere', 'mine',
+    'not', 'or', 'print', 'set', 'step', 'to', 'true', 'turn', 'while',
+  ];
+  // Kisbetűs Set: gyorsan ellenőrizhető, hogy egy név kulcsszó-e, kis/nagybetűtől függetlenül.
+  const KEYWORDS_LOWER = new Set(KEYWORDS.map((k) => k.toLowerCase()));
+
+  // Számtani operátorok.
+  const ARITH_OPS = new Set(['+', '-', '*']);
+  // Számok összehasonlítására szolgáló operátorok.
+  const COMPARE_OPS = new Set(['<', '<=', '>', '>=']);
+  // Egyenlőség és különbözőség vizsgálata.
+  const EQUALITY_OPS = new Set(['=', '<>']);
+  // Logikai műveletek.
+  const LOGIC_OPS = new Set(['and', 'or']);
+
+  // Futtatás közben legfeljebb ennyi tick/sor feldolgozás történhet.
+  const MAX_STEPS = 1000;
+  // A forrásban megadott egész szám-literál felső határa.
+  const MAX_LITERAL = 100;
+  // A térkép minimális mérete sorban és oszlopban.
+  const MAP_MIN = 1;
+  // A térkép maximális mérete sorban és oszlopban.
+  const MAP_MAX = 15;
+
+  // Az irányok sorrendje az óramutatóval ELLENTÉTES (balra fordulás = +1).
+  // A robot irányát jelző karakterek indexe egyben a belső iránykód.
+  const DIR_CHARS = ['^', '<', 'v', '>'];
+  // Irányonként ennyit változik a sor és oszlop koordinátája.
+  const DIR_DELTA = [[-1, 0], [0, -1], [1, 0], [0, 1]];
+  // Az iránykódok ember által olvasható nevei, az előző tömb sorrendjében.
+  const DIR_NAMES = ['észak', 'nyugat', 'dél', 'kelet'];
+
+  // A térkép üres mezőjének jele.
+  const CELL_EMPTY = '.';
+  // Az aranyat jelölő karakter.
+  const CELL_GOLD = '@';
+  // A falat jelölő karakter.
+  const CELL_WALL = '#';
+
+  // Alapértelmezett, felhasználónak megjeleníthető hibaüzenetek kód szerint.
+  const ERROR_DESCRIPTIONS = {
+    E_TYPE_MISMATCH: 'Típust váltó értékadás: a változó típusa már rögzült, más típusú érték nem adható neki.',
+    E_UNINITIALIZED: 'Nem inicializált változó olvasása: a változónak még nem adtál értéket.',
+    E_NON_BOOL_CONDITION: 'Az if vagy while feltétele nem logikai érték.',
+    E_BAD_OPERAND: 'Rossz operandustípus a műveletben.',
+    E_BEDROCK_HIT: 'A robot falnak ütközött vagy lelépett volna a térképről.',
+    E_NO_GOLD: 'Bányászás arany nélkül: ezen a mezőn nincs (már) arany.',
+    E_BAD_ARG: 'Érvénytelen paraméter egy robotparancsnál.',
+    INSTRUCTION_COUNT_LIMIT_EXCEEDED: 'A program túllépte az 1000 feldolgozható programsoros limitet.',
+  };
+
+  // ---------------------------------------------------------------------------
+  // Térkép
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Térképfájl szövegének feldolgozása.
+   * @returns {{ok: true, map: {rows:number, cols:number, grid:string[]}} | {ok:false, errors: {line:number|null, message:string}[]}}
+   */
+  // A bemeneti térképszöveget ellenőrzi és belső rács-formára alakítja.
+  function parseMap(text) {
+    if (typeof text !== 'string') {
+      return { ok: false, errors: [{ line: null, message: 'A térkép nem szöveg.' }] };
+    }
+
+    // BOM eltávolítása, illetve Windows/Mac sortörések egységesítése LF-re.
+    let src = text.replace(/^﻿/, '').replace(/\r\n?/g, '\n');
+    // A fájl végéről az összes üres sortörést eltávolítjuk.
+    src = src.replace(/\n+$/, '');
+
+    if (src.trim() === '') {
+      return { ok: false, errors: [{ line: null, message: 'A térképfájl üres.' }] };
+    }
+
+    // Sorokra bontunk, és minden sor végéről levágjuk a szóközöket/tabokat.
+    const lines = src.split('\n').map((l) => l.replace(/[ \t]+$/, ''));
+    const errors = [];
+
+    // A fejléc pontos formája: sorok száma, egy szóköz, oszlopok száma.
+    const head = /^(\d+) (\d+)$/.exec(lines[0]);
+
+    if (!head) {
+      return {
+        ok: false,
+        errors: [{ line: 1, message: 'Az első sorban a térkép méretének kell állnia két, egy szóközzel elválasztott egész számként (pl. „3 15”).' }],
+      };
+    }
+
+    // A fejléc két számát egész számmá alakítjuk.
+    const rows = parseInt(head[1], 10);
+    const cols = parseInt(head[2], 10);
+
+    if (rows < MAP_MIN || rows > MAP_MAX || cols < MAP_MIN || cols > MAP_MAX) {
+      return { ok: false, errors: [{ line: 1, message: `A térkép mindkét mérete ${MAP_MIN} és ${MAP_MAX} között kell legyen (megadva: ${rows} × ${cols}).` }] };
+    }
+
+    // A fejléc utáni sorok a térkép rácsát alkotják.
+    const body = lines.slice(1);
+
+    if (body.length !== rows) {
+      errors.push({ line: null, message: `A fejléc szerint ${rows} sornak kellene lennie, de ${body.length} sor található.` });
+    }
+
+    const grid = [];
+
+    // Legfeljebb MAP_MAX+5 sort vizsgálunk; a plusz sorok kezelése korlátozott.
+    for (let i = 0; i < Math.min(body.length, MAP_MAX + 5); i++) {
+      
+      const line = body[i];
+      const lineNo = i + 2;
+      
+      if (line.length !== cols) {
+        errors.push({ line: lineNo, message: `A sor hossza ${line.length}, de ${cols} karakternek kellene lennie.` });
+      }
+      
+      // Soronként ellenőrizzük, hogy csak megengedett térképjel szerepel-e.
+      for (let c = 0; c < line.length; c++) {
+
+        if ('.@#<>^v'.indexOf(line[c]) === -1) {
+
+          errors.push({ line: lineNo, message: `Ismeretlen karakter: „${line[c]}” (${c + 1}. oszlop). Megengedett: . @ # > < ^ v` });
+          break;
+
+        }
+      }
+
+      grid.push(line);
+
+    }
+
+    // A rács további ellenőrzése csak akkor történik, ha a fenti ellenőrzések hibamentesek.
+    if (errors.length === 0) {
+
+      errors.push(...validateGrid(rows, cols, grid));
+    
+    }
+
+    if (errors.length) return { ok: false, errors };
+
+    return { ok: true, map: { rows, cols, grid } };
+  
+  }
+
+
+  /** Egy már rácsként megadott térkép szabályainak ellenőrzése (szerkesztő is használja). */
+
+  // Közvetlen rácsot ellenőriz, például a szerkesztőből érkező térképet.
+  function validateGrid(rows, cols, grid) {
+
+    // Létrehozunk egy üres tömböt, amelyben a térképpel kapcsolatos hibákat tároljuk.
+    const errors = [];
+
+
+    // KORLÁTOK ELLENŐRZÉSE | EGESZ SZAM E
+
+    // A méretek egész számok legyenek, és a megengedett tartományba essenek.
+    if (!Number.isInteger(rows) || !Number.isInteger(cols) ||
+        rows < MAP_MIN || rows > MAP_MAX || cols < MAP_MIN || cols > MAP_MAX) {
+
+      //Hibauzenet
+      
+      errors.push({
+        line: null,
+        message: `A térkép mindkét mérete ${MAP_MIN} és ${MAP_MAX} között kell legyen.`
+      });
+
+      return errors;
+
+    }
+
+    // HIBAKEZELÉS – A SOROK SZÁMÁNAK ELLENŐRZÉSE
+
+    // A rács tömb legyen, és a sorok száma egyezzen a megadott mérettel.
+    if (!Array.isArray(grid) || grid.length !== rows) {
+
+      // Ha nem megfelelő a sorok száma, hibaüzenetet adunk hozzá.
+      errors.push({
+        line: null,
+        message: 'A térkép sorainak száma nem egyezik a mérettel.'
+      });
+
+      return errors;
+    }
+
+    // ROBOTOK SZÁMOLÁSA
+
+    let robots = 0;
+
+    // A TÉRKÉP SORAINAK ÉS MEZŐINEK ELLENŐRZÉSE
+
+    // Végigmegyünk a rács sorain.
+    for (let r = 0; r < rows; r++) {
+
+      //String e | korlatok
+
+      if (typeof grid[r] !== 'string' || grid[r].length !== cols) {
+
+        errors.push({
+          line: null,
+          message: `A(z) ${r + 1}. sor hossza hibás.`
+        });
+        
+        return errors;
+      }
+
+
+      //actual sor osszes oszlopan
+      // Az adott sor minden oszlopát egyenként vizsgáljuk.
+      for (let c = 0; c < cols; c++) {
+
+        //actual sor actual oszlopa
+        // Az aktuális cella karakterét kiolvassuk.
+        const ch = grid[r][c];
+
+
+        // ÉRVÉNYTELEN KARAKTER ELLENŐRZÉSE
+
+        if ('.@#<>^v'.indexOf(ch) === -1) {
+
+          errors.push({
+            line: null,
+            //index + 1
+            message: `Érvénytelen mező a(z) ${r + 1}. sor ${c + 1}. oszlopában.`
+          });
+
+          return errors;
+        }
+
+        // ROBOTOK MEGSZÁMOLÁSA
+
+        //lehetseges iranyokban valo ellenorzes
+        // Ha irányjel, akkor robotot találtunk.
+        if (DIR_CHARS.indexOf(ch) !== -1) {
+
+          robots++;
+        
+        }
+      }
+    }
+
+
+    // A ROBOTOK SZÁMÁNAK ELLENŐRZÉSE
+
+    // Ha a nincs robot
+    if (robots === 0) {
+      errors.push({
+        line: null,
+        message: 'A térképen nincs robot. Pontosan egy robotot (>, <, ^, v) kell elhelyezni.'
+      });
+    }
+
+    //ha tobb robot van mint 1
+    if (robots > 1) {
+      errors.push({
+        line: null,
+        message: `A térképen ${robots} robot van, de pontosan egynek kell lennie.`
+      });
+    }
+
+    //fuggveny vege
+
+    return errors;
+}
+
+
+// TÉRKÉP SZÖVEGGÉ ALAKÍTÁSA
+
+function serializeMap(map) {
+
+  //egy Stringbe rakjuk a sorokat, oszlpopkat. Egy string = a terkep  
+  return `${map.rows} ${map.cols}\n${map.grid.join('\n')}\n`;
+
+  }
+
+
+// ARANYAK MEGSZÁMOLÁSA
+
+function countGold(map) {
+
+    //aranyak szama
+    let n = 0;
+
+    //a terkep osszes soran
+    for (const row of map.grid)
+
+      //a sor osszes karakteren
+      for (const ch of row)
+
+        //ha arany:
+        if (ch === CELL_GOLD)
+          n++;
+
+    return n;
+}
+
+  // ---------------------------------------------------------------------------
+  // Szintaktikai elemzés
+  // ---------------------------------------------------------------------------
+
+  // Saját szintaktikai hibatípus, amely a hiba sorát is tárolja.
+  // Ez a hibatípus a szokásos JavaScript-hiba mellett a forráskód sorát is eltárolja.
+  // Így amikor később hibát jelzünk, meg tudjuk mondani, hogy a felhasználó
+  // programjának melyik sorában található a probléma.
+  class MineScriptSyntaxError extends Error {
+    constructor(line, message) {
+      // Az Error ősosztály message tulajdonságát állítjuk be.
+      super(message);
+      // Saját tulajdonság: a MineScript-programon belüli sorszám.
+      this.line = line;
+    }
+  }
+
+  // Egy egyszerű értéket értelmez: számot, logikai értéket vagy változónevet.
+  function parseSimpleval(tok, line) {
+    // Ez a függvény egyetlen tokent értelmez. A token lehet szám, true/false
+    // vagy változónév. Fontos: itt még nem számolunk és nem olvassuk ki a
+    // változó értékét, csak megállapítjuk, milyen típusú dologról van szó.
+
+    // 1. eset: a token csak számjegyekből áll. A ^ és $ miatt a TELJES
+    // tokennek számnak kell lennie, például a "25" megfelelő, a "25a" nem.
+    if (/^[0-9]+$/.test(tok)) {
+      // A 10-es számrendszerben egész számmá alakítjuk a szöveget.
+      const value = parseInt(tok, 10);
+      // A nyelvben egy beírt szám legfeljebb MAX_LITERAL lehet (jelenleg 100).
+      if (value > MAX_LITERAL) {
+        // A throw megszakítja az aktuális feldolgozást, és szintaktikai hibát jelez.
+        throw new MineScriptSyntaxError(line, `A(z) ${tok} szám kívül esik a megengedett 0–${MAX_LITERAL} tartományon.`);
+      }
+      // Egységes objektumként adjuk vissza: a kind jelzi a típust, a value az értéket.
+      // Példa: "25" -> { kind: 'int', value: 25 }.
+      return { kind: 'int', value };
+    }
+
+    // 2. eset: a két megengedett logikai literális valamelyike.
+    // A token szövegét valódi JavaScript true/false értékké alakítjuk.
+    if (tok === 'true' || tok === 'false') return { kind: 'bool', value: tok === 'true' };
+
+    // 3. eset: változónév. Betűvel kell kezdődnie, utána betűk és számok jöhetnek.
+    if (/^[A-Za-z][A-Za-z0-9]*$/.test(tok)) {
+      // A kulcsszavakat kisbetűsítve hasonlítjuk össze, ezért pl. az "IF" sem
+      // használható változónévként, noha a nyelvi utasítások kis-/nagybetűsek.
+      if (KEYWORDS_LOWER.has(tok.toLowerCase())) {
+        throw new MineScriptSyntaxError(line, `„${tok}” itt nem állhat: kulcsszó, ezért nem használható értékként vagy változónévként.`);
+      }
+      // Nem az aktuális változóértéket adjuk vissza, csak a változó nevét.
+      // A tényleges érték kiolvasása majd futás közben, a read() függvényben történik.
+      return { kind: 'var', name: tok };
+    }
+
+    // Ha egyik fenti forma sem illik rá, a token nem lehet egyszerű érték.
+    throw new MineScriptSyntaxError(line, `„${tok}” nem érvényes érték (változónév, 0–100 közötti szám, true vagy false várható).`);
+  }
+
+  // Változónév ellenőrzése; a név betűvel kezdődik és csak betű/szám lehet benne.
+  function parseIdent(tok, line) {
+    // Külön függvény ellenőrzi a változó nevét, mert a set utasításban
+    // a névnek szigorú szabályoknak kell megfelelnie.
+
+    // Ha nincs ilyen token, akkor a sorból teljesen kimaradt a változónév.
+    if (tok === undefined) throw new MineScriptSyntaxError(line, 'Hiányzik a változó neve.');
+
+    // A név első karaktere angol betű, a további karakterek angol betűk
+    // vagy számjegyek lehetnek. Például: score1 jó, 1score vagy my_score nem jó.
+    if (!/^[A-Za-z][A-Za-z0-9]*$/.test(tok)) {
+      throw new MineScriptSyntaxError(line, `„${tok}” nem érvényes változónév (betűvel kell kezdődnie, csak betűt és számjegyet tartalmazhat).`);
+    }
+
+    // Egy nyelvi kulcsszó nem lehet változónév, mert akkor a parser nem tudná
+    // egyértelműen eldönteni, hogy utasításról vagy változóról van-e szó.
+    if (KEYWORDS_LOWER.has(tok.toLowerCase())) {
+      throw new MineScriptSyntaxError(line, `„${tok}” kulcsszó, nem használható változónévként.`);
+    }
+
+    // Ha minden ellenőrzés sikerült, visszaadjuk a nevet változatlanul.
+    return tok;
+  }
+
+  // Ellenőrzi, hogy az utasításban pontosan a szükséges tokenek száma szerepel-e.
+  function expectCount(tokens, n, line, usage) {
+    // A tokens az adott sor szóközök mentén szétválasztott elemeinek tömbje.
+    // Ez a segédfüggvény azt nézi meg, hogy pontosan n darab elem van-e benne.
+    // Például a "mine here" két tokenből áll, ezért ott n = 2.
+    if (tokens.length !== n) {
+      // Nem próbáljuk kitalálni, mit szeretett volna írni a felhasználó:
+      // megadjuk a helyes utasításformát.
+      throw new MineScriptSyntaxError(line, `Hibás utasítás. Helyes alak: ${usage}`);
+    }
+  }
+
+  // Egy adott token helyén a megadott kulcsszót várja.
+  function expectKeyword(tokens, i, kw, line, usage) {
+    // A megadott i indexű helyen pontosan a kw kulcsszót várjuk.
+    // Például a "step forward 3" sorban az 1-es indexű tokennek "forward"-nak kell lennie.
+    if (tokens[i] !== kw) {
+      // Ha van ott valamilyen token, azt is beleírjuk a hibaüzenetbe;
+      // ha nincs, akkor egyszerűen jelezzük, hogy hiányzik a kulcsszó.
+      throw new MineScriptSyntaxError(line, `„${kw}” kulcsszó várható${tokens[i] !== undefined ? `, de „${tokens[i]}” áll itt` : ''}. Helyes alak: ${usage}`);
+    }
+  }
+
+  // A set utasítás értékét/kifejezését dolgozza fel, legfeljebb egy operátorral.
+  function parseCalculated(tokens, line) {
+    // Ez a függvény a set utasítás "to" utáni részét értelmezi.
+    // A tokens itt már csak a kifejezés elemeit tartalmazza.
+    // A nyelv egyszerű kifejezéseket enged: nincs zárójelezés és nincs több
+    // egymásba ágyazott művelet egy soron belül. Legfeljebb egy operátor lehet.
+
+    // 0 token: a "set x to" után semmilyen érték nem következik.
+    if (tokens.length === 0) throw new MineScriptSyntaxError(line, 'A „to” után hiányzik az érték.');
+
+    // 1 token: egyetlen érték vagy változó szerepel.
+    // Például: set x to 5 vagy set x to flag.
+    if (tokens.length === 1) {
+      // Az isThere és a not önmagukban nem teljesek, mindkettő után kell egy operandus.
+      if (tokens[0] === 'isThere' || tokens[0] === 'not') {
+        throw new MineScriptSyntaxError(line, `A(z) „${tokens[0]}” után hiányzik a paraméter.`);
+      }
+      // A value típusú AST-csomópont azt jelenti, hogy nincs művelet,
+      // csak egy egyszerű értéket kell majd kiolvasni futás közben.
+      return { type: 'value', value: parseSimpleval(tokens[0], line) };
+    }
+
+    // 2 token: csak az egyoperandusú isThere és not formák megengedettek.
+    // Például: set wall to isThere 1 vagy set active to not ready.
+    if (tokens.length === 2) {
+      // Az isThere a robot előtti mező típusát vizsgálja; az arg a vizsgált kód.
+      if (tokens[0] === 'isThere') return { type: 'isThere', arg: parseSimpleval(tokens[1], line) };
+      // A not logikai tagadás; a tényleges bool-típus ellenőrzése futás közben lesz.
+      if (tokens[0] === 'not') return { type: 'not', arg: parseSimpleval(tokens[1], line) };
+      // Két tetszőleges tokenből nem állhat össze érvényes kifejezés.
+      throw new MineScriptSyntaxError(line, 'Két tagú kifejezés csak „isThere x” vagy „not x” lehet.');
+    }
+
+    // 3 token: két operandus között pontosan egy operátornak kell állnia.
+    // Példa: set total to a + 3 -> ["a", "+", "3"].
+    if (tokens.length === 3) {
+      // A középső token lesz a műveleti jel.
+      const op = tokens[1];
+      // Megnézzük, hogy a középső token valamelyik ismert operátor-e.
+      // A Set.has() igazat ad vissza, ha az adott elem benne van a halmazban.
+      const isOp = ARITH_OPS.has(op) || COMPARE_OPS.has(op) || EQUALITY_OPS.has(op) || LOGIC_OPS.has(op);
+      if (!isOp) {
+        // Ismeretlen műveletnél felsoroljuk az összes használható operátort.
+        throw new MineScriptSyntaxError(line, `„${op}” nem ismert művelet. Lehetséges: + - * = <> < <= > >= and or`);
+      }
+      // AST-t (absztrakt szintaxisfát) készítünk. Ez egy objektum,
+      // amely leírja, mit kell később végrehajtani, de itt még nem számolunk.
+      return {
+        type: 'binop', // bináris művelet: két oldala (operandusa) van
+        op,             // maga az operátor, például + vagy and
+        left: parseSimpleval(tokens[0], line),  // bal oldali operandus értelmezése
+        right: parseSimpleval(tokens[2], line), // jobb oldali operandus értelmezése
+      };
+    }
+
+    // 4 vagy több token esetén a kifejezés túl hosszú. Ez zárja ki például
+    // a "a + b * c" alakot is; a nyelvben soronként csak egy művelet szerepelhet.
+    throw new MineScriptSyntaxError(line, 'Túl hosszú kifejezés: egy sorban legfeljebb egy művelet állhat (pl. „a + b”).');
+  }
+
+  /** Egy sor (behúzás nélküli) tokenjeiből utasítás-csomópontot készít. */
+  // A tokenek első eleme alapján kiválasztja és ellenőrzi az utasítás típusát.
+  function parseCommand(tokens, line) {
+    // A teljes sort tokenekre bontva kapjuk meg. Az első token mondja meg,
+    // milyen utasítással van dolgunk. Például: ["step", "forward", "3"].
+    const head = tokens[0];
+
+    // A switch minden ismert utasítást külön ágban dolgoz fel.
+    // Itt ellenőrizzük az utasítás alakját, majd elkészítjük az AST-objektumot.
+    // A robot még nem mozog és változóérték sem változik: ez csak elemzés.
+    switch (head) {
+      case 'step':
+        // A step utasítás kötelező alakja: step forward n.
+        // A második szó tehát nem tetszőleges, hanem pontosan "forward" kell legyen.
+        expectKeyword(tokens, 1, 'forward', line, 'step forward n');
+        // Három tokennek kell lennie: step | forward | n.
+        expectCount(tokens, 3, line, 'step forward n');
+        // A harmadik token értelmezése után egy step típusú AST-csomópont jön létre.
+        return { kind: 'step', arg: parseSimpleval(tokens[2], line) };
+      case 'turn':
+        // A turn utasítás alakja: turn by n, ahol n a fordulások száma.
+        expectKeyword(tokens, 1, 'by', line, 'turn by n');
+        expectCount(tokens, 3, line, 'turn by n');
+        // A fordulások számát egyszerű értékként tároljuk az AST-ben.
+        return { kind: 'turn', arg: parseSimpleval(tokens[2], line) };
+      case 'mine':
+        // A bányászás egyetlen megengedett alakja: mine here.
+        expectKeyword(tokens, 1, 'here', line, 'mine here');
+        expectCount(tokens, 2, line, 'mine here');
+        // Nincs paramétere, ezért az AST-csomópontnak sem kell arg mező.
+        return { kind: 'mine' };
+      case 'print':
+        // A print pontosan egy kiírandó értéket vár: print x.
+        expectCount(tokens, 2, line, 'print x');
+        // A kiírandó rész lehet literális érték vagy változónév.
+        return { kind: 'print', arg: parseSimpleval(tokens[1], line) };
+      case 'set': {
+        // A set alakja: set változónév to kifejezés.
+        // Először a második tokenből ellenőrzött változónevet készítünk.
+        const name = parseIdent(tokens[1], line);
+        // A harmadik tokennek kötelezően "to"-nak kell lennie.
+        expectKeyword(tokens, 2, 'to', line, 'set változó to érték');
+        // A slice(3) a 3-as indexű elemtől a sor végéig másolja a tokeneket.
+        // Vagyis a set, a név és a to kimarad, csak a beállítandó kifejezés marad.
+        // Ezt a parseCalculated dolgozza fel.
+        return { kind: 'set', name, expr: parseCalculated(tokens.slice(3), line) };
+      }
+      case 'if':
+        // Az if sorban egyetlen feltétel szerepelhet: if feltétel.
+        expectCount(tokens, 2, line, 'if feltétel');
+        // A feltétel itt még csak egy egyszerű érték vagy változó leírása.
+        // Azt, hogy futás közben valóban logikai érték-e, a Runner ellenőrzi.
+        return { kind: 'if', cond: parseSimpleval(tokens[1], line) };
+      case 'while':
+        // A while sor ugyanúgy egyetlen feltételt kap.
+        expectCount(tokens, 2, line, 'while feltétel');
+        // A ciklustörzs még nincs itt feldolgozva; azt később a behúzások alapján
+        // a parseBlock/parseChildBlock függvények kapcsolják ehhez a csomóponthoz.
+        return { kind: 'while', cond: parseSimpleval(tokens[1], line) };
+      case 'else':
+        // Az else önállóan áll, nem követheti feltétel vagy további paraméter.
+        // Azt, hogy valóban egy if-hez tartozik-e, a blokkelemzés dönti el.
+        expectCount(tokens, 1, line, 'else (egyedül a sorban)');
+        return { kind: 'else' };
+      default: {
+        // Ha az első token egyik ismert utasítással sem egyezik, megpróbáljuk
+        // megállapítani, hogy csak a kis- és nagybetűk használata volt-e hibás.
+        const lower = head.toLowerCase();
+        // Az összes olyan utasítás neve, amelyet a parser ismer.
+        const known = ['step', 'turn', 'mine', 'print', 'set', 'if', 'while', 'else'];
+        // Például a "STEP" kisbetűsítve "step" lesz, így tudunk célzott tippet adni.
+        const hint = known.find((k) => k === lower);
+        // Ha találtunk ilyen szót, jelezzük a helyes kisbetűs alakot.
+        // Ha nem, felsoroljuk az összes választható utasítást.
+        throw new MineScriptSyntaxError(line, hint
+          ? `Ismeretlen utasítás: „${head}”. A kulcsszavak kis- és nagybetűérzékenyek, helyesen: „${hint}”.`
+          : `Ismeretlen utasítás: „${head}”. Lehetséges: step, turn, mine, print, set, if, else, while.`);
+      }
+    }
+  }
+
+  // A forrás szövegét sorokra bontja és a legvégén lévő egy sortörést elfogadja.
+  function splitSourceLines(source) {
+    // Biztosítjuk, hogy szöveggel dolgozzunk akkor is, ha a hívó más típust ad át.
+    // A String(source) a bemenetet szöveggé alakítja.
+    // Az első replace az esetleges UTF-8 BOM karaktert távolítja el a fájl elejéről.
+    // A második replace a Windows (CRLF) és régi Mac (CR) sortöréseket egységesíti,
+    // és a JavaScriptben használt \n sortöréskarakterre cseréli őket.
+    let src = String(source).replace(/^﻿/, '').replace(/\r\n?/g, '\n');
+
+    // Üres bemenet esetén nincs feldolgozható sor, ezért üres tömböt adunk vissza.
+    if (src === '') return [];
+
+    // A split('\n') minden sortörésnél elvágja a szöveget, így sorok tömbje lesz.
+    const lines = src.split('\n');
+    // Sok szerkesztő a fájl végére automatikusan tesz egy sortörést.
+    // Ilyenkor a split egy utolsó üres elemet is létrehoz; ezt az egyet levesszük.
+    // A fájlon belüli további üres sorokat viszont nem töröljük, azokat a parser hibának jelzi.
+    if (lines[lines.length - 1] === '') lines.pop();
+
+    // Visszaadjuk a sorokat; a tényleges tartalmi és szintaktikai ellenőrzés később történik.
+    return lines;
+  }
+
+  /**
+   * A forráskód teljes szintaktikai ellenőrzése és AST felépítése.
+   * @returns {{ok:true, program:{body:Array}} | {ok:false, errors:{line:number, message:string}[]}}
+   */
+  // A teljes programot ellenőrzi, majd a blokkokból AST-t (utasításfát) épít.
+  function parseProgram(source) {
+    // Ez a szintaktikai elemzés fő belépési pontja.
+    // Két nagy feladatot végez: először az egyes sorokat ellenőrzi, utána
+    // a behúzásokból felépíti, hogy mely utasítások mely blokkokba tartoznak.
+
+    // A forrás szövegét külön függvénnyel sorokra bontjuk.
+    const rawLines = splitSourceLines(source);
+    // Ide kerülnek az első ellenőrzési körben talált szintaktikai hibák.
+    const errors = [];
+    // Ide kerülnek a már feldolgozott sorok: sorszám + behúzás + utasítás.
+    const lines = [];
+
+    // 1. lépés: soronkénti (lexikai + utasítás-szintű) ellenőrzés – minden hibát összegyűjtünk.
+    // Első kör: minden sort önállóan ellenőrzünk, és összegyűjtjük a sorhibákat.
+    rawLines.forEach((raw, i) => {
+      // A tömb indexe 0-tól indul, a felhasználónak viszont 1-től számozzuk a sorokat.
+      const no = i + 1;
+      try {
+        // A nyelvben tabulátor helyett szóközökkel kell behúzni.
+        // Ez azért fontos, mert a blokkok határait a szóközök számából állapítjuk meg.
+        if (raw.indexOf('\t') !== -1) {
+          throw new MineScriptSyntaxError(no, 'Tabulátor nem használható, a behúzást szóközökkel kell jelölni.');
+        }
+        // A trim() a sor elejéről és végéről eltávolítja a whitespace karaktereket.
+        // Ha ezután üres szöveget kapunk, a sor üres vagy csak szóközökből áll.
+        if (raw.trim() === '') {
+          throw new MineScriptSyntaxError(no, 'Üres sor nem szerepelhet a programban.');
+        }
+        // A forrásnyelv csak látható ASCII karaktereket és sima szóközt enged.
+        // Az ékezetes betűk és a nem megengedett vezérlőjelek ezért hibásak.
+        if (/[^\x21-\x7E ]/.test(raw)) {
+          throw new MineScriptSyntaxError(no, 'A sor nem megengedett (pl. ékezetes vagy láthatatlan) karaktert tartalmaz.');
+        }
+        // Megszámoljuk a sor elején lévő szóközöket, ez lesz a behúzás mérete.
+        // Megszámoljuk a sor elején található szóközöket.
+        // Példa: "    step forward 2" esetén indent értéke 4 lesz.
+        // A képlet az eredeti sor hosszából kivonja a szóközök nélküli rész hosszát.
+        const indent = raw.length - raw.replace(/^ +/, '').length;
+        // A slice(indent) levágja a sor eleji behúzást, így a parancs tisztán marad.
+        // A behúzás számát külön eltároljuk, mert a második feldolgozási körben szükség lesz rá.
+        const rest = raw.slice(indent);
+        // Ha a behúzás levágása után a parancs végén szóköz maradt, azt hibának vesszük.
+        if (/ $/.test(rest)) {
+          throw new MineScriptSyntaxError(no, 'A sor végén felesleges szóköz áll.');
+        }
+        // Két egymás utáni szóköz sem engedélyezett a parancs szavai között.
+        // Így a tokenek egyszerűen, egyetlen szóköz mentén szétválaszthatók.
+        if (rest.indexOf('  ') !== -1) {
+          throw new MineScriptSyntaxError(no, 'A tokenek között pontosan egy szóköz állhat.');
+        }
+        // A szóközök mentén tokenekre bontjuk a parancsot.
+        // A sort az egyes szóközöknél feldaraboljuk.
+        // Példa: "step forward 2" -> ["step", "forward", "2"].
+        const tokens = rest.split(' ');
+        // A tokenekből a parseCommand felismeri az utasítást és ellenőrzi a formáját.
+        const cmd = parseCommand(tokens, no);
+        // Sikeres sorfeldolgozás után eltároljuk a sor adatait.
+        // no: eredeti sorszám, indent: behúzás, cmd: az utasítás AST-leírása.
+        lines.push({ no, indent, cmd });
+      } catch (e) {
+        // Csak a saját, általunk szándékosan előállított szintaktikai hibákat
+        // alakítjuk át a felhasználónak visszaadható hibalistává.
+        if (!(e instanceof MineScriptSyntaxError)) throw e;
+        // A hibához eltesszük a sorszámot és az érthető üzenetet.
+        errors.push({ line: e.line, message: e.message });
+      }
+    });
+    // Az első körben minden sort önállóan ellenőriztünk. Ha volt hiba,
+    // nem kezdjük el a blokkszerkezet építését, mert a hibás sorokból
+    // nem lenne megbízható a teljes program felépítése.
+    if (errors.length) return { ok: false, errors };
+
+    // Második kör: a behúzások alapján felépítjük az if/else/while blokkokat.
+    // 2. lépés: blokkszerkezet a behúzások alapján.
+    // A második körben egy közös feldolgozási állapotot adunk át a blokkelemzőnek.
+    // lines tartalmazza az első körben ellenőrzött sorokat, pos pedig azt mutatja,
+    // hogy éppen hányadik sor feldolgozásánál tartunk. A függvények ezt a pozíciót
+    // közösen növelik, ezért nem kell minden rekurzív hívásnak új tömböt készíteni.
+    const ctx = { lines, pos: 0 };
+    try {
+      // A program első sora a legfelső szinten áll, tehát nem lehet behúzva.
+      // Ez a feltétel csak akkor vizsgálható, ha van legalább egy feldolgozott sor.
+      if (lines.length && lines[0].indent !== 0) {
+        throw new MineScriptSyntaxError(lines[0].no, 'A program legfelső szintű sorai nem lehetnek behúzva.');
+      }
+      // A teljes program legkülső blokkja 0 szóközös behúzási szinten van.
+      // A parseBlock ebből kiindulva rekurzívan megkeresi az if/while belső blokkjait is.
+      const body = parseBlock(ctx, 0);
+      // Normál esetben a parseBlock az összes sort feldolgozza. Ha még maradt sor,
+      // akkor valamilyen behúzási szint nem illeszkedett a várt blokkszerkezethez.
+      if (ctx.pos < lines.length) {
+        // Elvileg nem fordulhat elő (0 alá nem mehet a behúzás), de biztos, ami biztos.
+        throw new MineScriptSyntaxError(lines[ctx.pos].no, 'Hibás behúzás.');
+      }
+      // Sikeres elemzés: a body az AST legfelső szintű utasításainak tömbje.
+      // A lineCount az eredeti forrás sorainak számát őrzi meg, a felület használhatja.
+      return { ok: true, program: { body, lineCount: rawLines.length } };
+    } catch (e) {
+      // A második körben a blokkstruktúra hibái jellemzően az első hibás behúzásnál
+      // megállítják a feldolgozást, ezért itt egyetlen hibát adunk vissza.
+      if (!(e instanceof MineScriptSyntaxError)) throw e;
+      return { ok: false, errors: [{ line: e.line, message: e.message }] };
+    }
+  }
+
+  // Egy adott behúzási szinthez tartozó utasításblokkot dolgoz fel.
+  function parseBlock(ctx, blockIndent) {
+    // Egy adott behúzási szinthez tartozó utasításokat gyűjtjük össze.
+    // Például a 0 szóközös szint a teljes program, a 4 szóközös szint lehet
+    // egy if vagy while belseje.
+    const body = [];
+    // A sorok listáját a ctx objektumból vesszük ki.
+    const { lines } = ctx;
+
+    // Addig dolgozunk, amíg van még feldolgozatlan sor.
+    while (ctx.pos < lines.length) {
+      // A pos mutatja az aktuálisan vizsgált sort.
+      const ln = lines[ctx.pos];
+
+      // Ha a sor kevésbé van behúzva, mint a mostani blokk, akkor ez a blokk véget ért.
+      // A sort nem fogyasztjuk el: a hívó blokk fogja majd feldolgozni.
+      if (ln.indent < blockIndent) break;
+      // Ha a sor mélyebben van behúzva, mint ez a blokk, akkor nem tartozhat
+      // közvetlenül ide. Ilyen új belső blokk csak if/while (vagy az if-hez
+      // kapcsolt else) után kezdődhet, ezért más esetben hibás a behúzás.
+      if (ln.indent > blockIndent) {
+        throw new MineScriptSyntaxError(ln.no, `Hibás behúzás: ebben a blokkban ${blockIndent} szóköz a behúzás, itt ${ln.indent} áll. (Behúzott blokk csak if, else vagy while után kezdődhet.)`);
+      }
+
+      // Az else nem lehet önálló parancs. A megfelelő if utáni sorban,
+      // közvetlenül az if feldolgozásakor kapcsoljuk hozzá az else ágat.
+      if (ln.cmd.kind === 'else') {
+        throw new MineScriptSyntaxError(ln.no, 'Az „else” előtt nem áll vele azonos behúzású „if”.');
+      }
+      // Ezt a sort most már feldolgozzuk, ezért továbblépünk a következőre.
+      ctx.pos++;
+      // A parancs saját adatait kiegészítjük az eredeti sorszámmal.
+      // Erre futáskor szükség van, hogy hiba esetén meg tudjuk nevezni a sort.
+      const cmd = Object.assign({ line: ln.no }, ln.cmd);
+
+      // Csak az if és while utasításoknak van saját, behúzott törzsük.
+      if (cmd.kind === 'if' || cmd.kind === 'while') {
+        // Megkeressük és feldolgozzuk a közvetlenül ehhez az utasításhoz tartozó blokkot.
+        cmd.body = parseChildBlock(ctx, blockIndent);
+        // else csak if után következhet, és pontosan az if-fel azonos behúzású.
+        // A ctx.pos már az if belső blokkja utáni első sorra mutat.
+        if (cmd.kind === 'if' && ctx.pos < lines.length &&
+            lines[ctx.pos].indent === blockIndent && lines[ctx.pos].cmd.kind === 'else') {
+          // Elmentjük az else sorának számát, mert a futtató ezt külön lépésként jelzi.
+          cmd.elseLine = lines[ctx.pos].no;
+          // Az else sort is elfogyasztjuk, így a következő sor már az else törzsének eleje lehet.
+          ctx.pos++;
+          // Az else saját, beljebb húzott utasításait is blokká alakítjuk.
+          cmd.elseBody = parseChildBlock(ctx, blockIndent);
+        }
+      }
+      // A most elkészült utasítás-csomópontot hozzáadjuk a jelenlegi blokkhoz.
+      body.push(cmd);
+      // Ha a következő sor kisebb behúzású, de nem egyezik egyik nyitott blokkéval sem,
+      // azt a hívó blokk fogja "Hibás behúzás"-ként jelezni.
+    }
+    // Ha kiléptünk a while ciklusból, a body tartalmazza ennek a blokknak
+    // az összes közvetlen utasítását, az esetleges belső blokkokkal együtt.
+    return body;
+  }
+
+  // A következő, mélyebben behúzott sorokból gyermekblokkot készít.
+  function parseChildBlock(ctx, parentIndent) {
+    // A ctx.pos a szülő if/while utáni következő sorra mutat.
+    // Ha ez a sor beljebb van húzva, akkor az lesz a gyermekblokk behúzási szintje.
+    if (ctx.pos < ctx.lines.length && ctx.lines[ctx.pos].indent > parentIndent) {
+      // Rekurzívan meghívjuk a parseBlock függvényt az új behúzási szinten.
+      // A parseBlock addig gyűjti a sorokat, amíg azok ezen a szinten maradnak.
+      return parseBlock(ctx, ctx.lines[ctx.pos].indent);
+    }
+    // Ha nincs mélyebben behúzott következő sor, akkor a blokk üres.
+    // A nyelvtan ezt megengedi, tehát ez önmagában nem szintaktikai hiba.
+    return []; // a nyelvtan szerint üres blokk is megengedett
+  }
+
+  // ---------------------------------------------------------------------------
+  // Futtatás
+  // ---------------------------------------------------------------------------
+
+  // Futtatás közbeni saját hiba: kódot és forrássort is tárol.
+  class MineScriptRuntimeError extends Error {
+    constructor(code, line, detail) {
+      // Ha van részletes, konkrét hibaüzenet, azt használjuk.
+      // Egyébként a kódhoz tartozó általános leírást keressük ki.
+      // Ha ilyen sincs, maga a hibakód lesz az üzenet.
+      super(detail || ERROR_DESCRIPTIONS[code] || code);
+      // A géppel is kezelhető hibakódot külön eltároljuk.
+      this.code = code;
+      // A forrásprogram azon sora, amely futás közben hibát okozott.
+      this.line = line;
+      // A saját részletes szöveg; hiány esetén üres szöveg.
+      this.detail = detail || '';
+    }
+  }
+
+  // 32 bites, előjeles egész aritmetika túlcsordulással (a feladat nem rögzíti,
+  // mi történjen túlcsorduláskor; a determinisztikus viselkedés a cél).
+  // A bitwise OR 0-ra alakítás 32 bites előjeles egész tartományra kényszeríti az értéket.
+  const wrap32 = (x) => x | 0;
+
+  // Belső típusneveket magyar feliratokra fordít.
+  function typeName(t) {
+    return t === 'int' ? 'egész' : 'logikai';
+  }
+
+  // A futás közbeni értéket megjeleníthető szöveggé alakítja.
+  function formatValue(v) {
+    return v.type === 'bool' ? (v.value ? 'true' : 'false') : String(v.value);
+  }
+
+  /**
+   * A futtató állapota. A `steps()` generátor minden feldolgozott programsor
+   * és minden robotlépés után eseményt ad vissza, így a felület tetszőleges
+   * sebességgel animálhatja a futást.
+   */
+  // A program futtatásáért és a robot/térkép/változók állapotának kezeléséért felel.
+  class Runner {
+    constructor(program, map) {
+      // A Runner megkapja a már feldolgozott programot (AST-t) és a térkép adatait.
+      this.program = program;
+      // A térkép méretei külön tulajdonságként is eltárolódnak a gyors ellenőrzéshez.
+      this.rows = map.rows;
+      this.cols = map.cols;
+      // A grid lesz a futás közben módosítható térkép. Kétdimenziós tömb: sorok és oszlopok.
+      this.grid = [];
+      // A discovered ugyanekkora logikai rács: megjegyzi, melyik mezőt fedezte már fel a robot.
+      this.discovered = [];
+      // A bemeneti térképet belső, módosítható rácsba másoljuk.
+      for (let r = 0; r < map.rows; r++) {
+        const row = [];
+        for (let c = 0; c < map.cols; c++) {
+          const ch = map.grid[r][c];
+          // Megnézzük, hogy a cella robotirány-jelölő-e.
+          const dir = DIR_CHARS.indexOf(ch);
+          if (dir !== -1) {
+            this.robot = { r, c, dir };
+            row.push(CELL_EMPTY);
+          } else {
+            row.push(ch);
+          }
+        }
+        this.grid.push(row);
+        this.discovered.push(new Array(map.cols).fill(false));
+      }
+      if (!this.robot) throw new Error('A térképen nincs robot.');
+      // A robot induló mezője már felfedezettnek számít.
+      this.discovered[this.robot.r][this.robot.c] = true;
+      // A változókat Map tárolja: kulcs a változó neve, érték egy { type, value } objektum.
+      this.vars = new Map();
+      // A feldolgozott utasítások / ciklusfeltétel-vizsgálatok számlálója.
+      this.stepCount = 0;
+      // Az eddig kibányászott aranydarabok száma.
+      this.gold = 0;
+      // A print utasítások szöveges eredményei kerülnek ebbe a tömbbe.
+      this.output = [];
+      // A legutóbb végrehajtott forráskódsor száma; kezdetben még nincs ilyen.
+      this.currentLine = null;
+      // READY: még nem indult el; RUNNING: fut; OK: sikeresen befejeződött; ERROR: hibával állt le.
+      this.status = 'READY'; // READY | RUNNING | OK | ERROR
+      // A futás közben keletkezett hiba adatai, vagy null, ha nem történt hiba.
+      this.error = null;
+    }
+
+    // Generátor: eseményeket ad vissza, hogy a felület lépésenként animálhassa a futást.
+    *steps() {
+      // A csillag miatt ez generátorfüggvény: yield segítségével részletekben ad vissza eseményeket.
+      // A felület minden esemény után megállhat, kirajzolhatja az új állapotot, majd folytathatja.
+      this.status = 'RUNNING';
+      try {
+        // A teljes program legfelső blokkját hajtjuk végre. A yield* továbbadja
+        // az execBlock által kibocsátott eseményeket ennek a generátornak.
+        yield* this.execBlock(this.program.body);
+        // Ha hiba nélkül végigértünk, a program sikeresen befejeződött.
+        this.status = 'OK';
+        this.currentLine = null;
+      } catch (e) {
+        // A várt futásidejű hibákat eltároljuk, de a programozási hibákat nem rejtjük el.
+        if (!(e instanceof MineScriptRuntimeError)) throw e;
+        this.status = 'ERROR';
+        // A hiba fontos adatait egyszerű objektumban tároljuk a felület számára.
+        this.error = { code: e.code, line: e.line, message: e.message };
+        this.currentLine = e.line;
+      }
+      // A végén egy külön end esemény jelzi a felületnek, hogy a futás befejeződött.
+      yield { type: 'end' };
+    }
+
+    /** Végigfuttatja a programot animáció nélkül. */
+    // A generátort végiglépteti, eseményeket nem animálva, majd visszaadja az eredményt.
+    runToEnd() {
+      // Létrehozzuk a steps() generátort.
+      const it = this.steps();
+      // A next() mindig a következő yield-ig futtatja a generátort.
+      // A done akkor lesz true, amikor a generátor már teljesen befejeződött.
+      // Ezzel a ciklussal minden eseményen azonnal továbbhaladunk, animáció nélkül.
+      while (!it.next().done) { /* tovább */ }
+      // A futás végeztével visszaadjuk az összesített eredményt.
+      return this.result();
+    }
+
+    // Összeállítja a futás aktuális eredményét egy külső felület számára.
+    result() {
+      // A belső állapotból egy külsőleg könnyen használható eredményobjektumot készítünk.
+      return {
+        // A futás állapota: READY, RUNNING, OK vagy ERROR.
+        status: this.status,
+        errorCode: this.error ? this.error.code : null,
+        errorLine: this.error ? this.error.line : null,
+        errorMessage: this.error ? this.error.message : null,
+        gold: this.gold,
+        steps: this.stepCount,
+        // slice() másolatot készít, így a hívó nem közvetlenül a Runner belső tömbjét kapja meg.
+        output: this.output.slice(),
+        // A robot sorát, oszlopát és iránykarakterét adjuk vissza.
+        robot: { r: this.robot.r, c: this.robot.c, dir: DIR_CHARS[this.robot.dir] },
+      };
+    }
+
+    // Egy feldolgozott programsor számlálása és line-esemény kibocsátása.
+    *tick(line) {
+      // Minden új utasítás-/feltétel-vizsgálat előtt töröljük az előző isThere
+      // vizsgálat koordinátáját. Így nem marad régi megfigyelés az új eseményben.
+      this.lastLook = null;
+      // Megakadályozzuk, hogy végtelen ciklus vagy túl hosszú program korlátlanul fusson.
+      // A limit elérésekor még nem növeljük tovább a számlálót, hanem hibát dobunk.
+      if (this.stepCount >= MAX_STEPS) {
+        throw new MineScriptRuntimeError('INSTRUCTION_COUNT_LIMIT_EXCEEDED', line);
+      }
+      // Ha még a limit alatt vagyunk, eggyel növeljük az utasításszámlálót.
+      this.stepCount++;
+      // Megjegyezzük, hogy a program melyik sorát hajtjuk éppen végre.
+      this.currentLine = line;
+      // A felület ebből tudja, melyik programsort kell kiemelnie.
+      yield { type: 'line', line };
+    }
+
+    // A blokkban lévő parancsokat egymás után végrehajtja.
+    *execBlock(body) {
+      // A body az AST-ben egy blokk utasításainak tömbje.
+      // Végigmegyünk rajta az eredeti sorrendben.
+      for (const cmd of body) {
+        // Az aktuális parancs végrehajtása eseményeket is adhat vissza.
+        // A yield* ezeket továbbítja a hívó generátornak.
+        yield* this.execCommand(cmd);
+      }
+    }
+
+    // Az AST-parancs típusától függően végrehajtja az adott műveletet.
+    *execCommand(cmd) {
+      const line = cmd.line;
+      switch (cmd.kind) {
+        // Robot előre mozgatása a megadott számú mezővel.
+        case 'step': {
+          // Először jelezzük, hogy ezt a programsort dolgozzuk fel, és növeljük a számlálót.
+          yield* this.tick(line);
+          // Kiolvassuk a lépésszámot. Csak egész és nemnegatív szám fogadható el.
+          const n = this.readApiInt(cmd.arg, line, 'step forward', (v) => v >= 0, 'nemnegatív egész');
+          // A robot minden egyes mezőre külön lép; ezért itt egy utasítás több move eseményt adhat.
+          for (let i = 0; i < n; i++) {
+            // Az irányhoz tartozó [soreltolás, oszlopleltolás] értéket kérjük le.
+            // Például északnál [-1, 0], vagyis egy sorral feljebb, ugyanabban az oszlopban.
+            const [dr, dc] = DIR_DELTA[this.robot.dir];
+            // Kiszámítjuk, melyik koordinátára kerülne a robot a következő lépéssel.
+            const nr = this.robot.r + dr;
+            const nc = this.robot.c + dc;
+            // Először azt nézzük meg, hogy a célmező egyáltalán a térképen belül van-e.
+            if (!this.inBounds(nr, nc)) {
+              throw new MineScriptRuntimeError('E_BEDROCK_HIT', line, `A robot lelépett volna a térképről (${i + 1}. lépésnél).`);
+            }
+            // Ha a célmező a térképen belül van, ellenőrizzük, hogy fal-e.
+            if (this.grid[nr][nc] === CELL_WALL) {
+              // A falat is felfedezettnek jelöljük, hiszen a robot észlelte az ütközést.
+              this.discovered[nr][nc] = true;
+              throw new MineScriptRuntimeError('E_BEDROCK_HIT', line, `A robot falnak ütközött (${i + 1}. lépésnél).`);
+            }
+            // Ha nincs fal és a mező a pályán belül van, frissítjük a robot helyzetét.
+            this.robot.r = nr;
+            this.robot.c = nc;
+            // A mező, amelyre a robot belépett, már biztosan felfedezett.
+            this.discovered[nr][nc] = true;
+            // Minden tényleges mezőlépés külön esemény, így a felület animálhatja.
+            yield { type: 'move', line };
+          }
+          return;
+        }
+        // Robot elfordítása a belső iránysorrend szerint.
+        case 'turn': {
+          // A fordulás is egy feldolgozott programsor, ezért meghívjuk a tick-et.
+          yield* this.tick(line);
+          // Kiolvassuk a fordulások számát; ez is egész és nemnegatív kell legyen.
+          const n = this.readApiInt(cmd.arg, line, 'turn by', (v) => v >= 0, 'nemnegatív egész');
+          // Négy irány van, ezért a 4-gyel vett maradék elég: 4 fordulás 0-val egyenértékű.
+          // A DIR_CHARS sorrendje miatt minden +1 egy balra fordulást jelent.
+          this.robot.dir = (this.robot.dir + (n % 4)) % 4;
+          yield { type: 'turn', line };
+          return;
+        }
+        // Az aktuális mezőn lévő arany kibányászása.
+        case 'mine': {
+          // Elindítjuk ennek a parancsnak a feldolgozását.
+          yield* this.tick(line);
+          // A robot aktuális sorát és oszlopát kiolvassuk egy rövid objektumdestrukturálással.
+          const { r, c } = this.robot;
+          // Csak akkor lehet bányászni, ha a robot mezőjén jelenleg aranyjelölő van.
+          if (this.grid[r][c] !== CELL_GOLD) {
+            throw new MineScriptRuntimeError('E_NO_GOLD', line);
+          }
+          // A kibányászott arany helyét üres mezőre cseréljük, tehát ugyanazt nem lehet újra bányászni.
+          this.grid[r][c] = CELL_EMPTY;
+          // Növeljük az eddig megszerzett aranyak számát.
+          this.gold++;
+          // Esemény a felületnek: ezen a soron aranyat bányásztunk.
+          yield { type: 'mine', line };
+          return;
+        }
+        // Érték kiírása a program kimenetébe.
+        case 'print': {
+          // A print utasítás végrehajtását is nyilvántartjuk.
+          yield* this.tick(line);
+          // Kiolvassuk a megadott értéket. Ha változónév szerepel, megkeressük a változó értékét.
+          const v = this.read(cmd.arg, line);
+          // A belső értékobjektumot egyszerű szöveggé alakítjuk, például true vagy 12 lesz belőle.
+          const text = formatValue(v);
+          // A kimeneti tömbben szövegként tároljuk, hogy a felület ki tudja írni.
+          this.output.push(text);
+          yield { type: 'print', line, text };
+          return;
+        }
+        // Kifejezés kiértékelése és érték tárolása a változóban.
+        case 'set': {
+          // A set sor feldolgozásának kezdetét jelezzük.
+          yield* this.tick(line);
+          // Kiértékeljük a parser által felépített kifejezést. Itt már tényleges értéket kapunk.
+          const v = this.evaluate(cmd.expr, line);
+          // Megnézzük, hogy a változó korábban kapott-e már értéket.
+          const existing = this.vars.get(cmd.name);
+          if (existing && existing.type !== v.type) {
+            throw new MineScriptRuntimeError('E_TYPE_MISMATCH', line,
+              `A(z) „${cmd.name}” változó ${typeName(existing.type)} típusú, nem kaphat ${typeName(v.type)} értéket.`);
+          }
+          // Ha a típusellenőrzés sikeres, elmentjük az új értéket a változóhoz.
+          this.vars.set(cmd.name, v);
+          // isThere esetén a robot előtti mezőt is megvizsgáltuk, ezt külön look eseménnyel jelezzük.
+          if (cmd.expr.type === 'isThere') yield { type: 'look', line, cell: this.lastLook };
+          // Minden más értékadásnál általános set eseményt küldünk.
+          else yield { type: 'set', line };
+          return;
+        }
+        // Feltételes blokk: igaz esetben if, hamis esetben – ha van – else fut.
+        case 'if': {
+          // Az if sor ellenőrzése is beleszámít a feldolgozási limitbe.
+          yield* this.tick(line);
+          // A condition kiolvassa a feltételt, és hibát dob, ha az nem logikai érték.
+          if (this.condition(cmd.cond, line)) {
+            // Igaz feltételnél az if-hez tartozó belső blokkot hajtjuk végre.
+            yield* this.execBlock(cmd.body);
+          } else if (cmd.elseBody) {
+            // Hamis feltételnél, ha volt else ág, annak sorát is külön jelezzük.
+            yield* this.tick(cmd.elseLine);
+            // Ezután az else blokk utasításai futnak le.
+            yield* this.execBlock(cmd.elseBody);
+          }
+          // Ha hamis a feltétel és nincs else, egyszerűen továbblépünk a következő utasításra.
+          return;
+        }
+        // A feltételt minden ciklus előtt újra ellenőrzi, amíg igaz.
+        case 'while': {
+          // A for (;;) egy szándékosan végtelen ciklus: a kilépést a break végzi.
+          // Így a feltételt a ciklus elején minden egyes ismétlés előtt újra ellenőrizzük.
+          for (;;) {
+            // Minden feltételvizsgálat új tick, tehát a while sor többször is számít.
+            yield* this.tick(line);
+            // Ha a feltétel hamis, a break kiléptet a ciklusból.
+            if (!this.condition(cmd.cond, line)) break;
+            // Igaz feltételnél végrehajtjuk a ciklus törzsét, majd visszatérünk a feltételhez.
+            yield* this.execBlock(cmd.body);
+          }
+          return;
+        }
+        default:
+          throw new Error('Ismeretlen csomópont: ' + cmd.kind);
+      }
+    }
+
+    // Megmondja, hogy a koordináta a térképen belül van-e.
+    inBounds(r, c) {
+      // A koordináta csak akkor érvényes, ha a sor és az oszlop is a 0-tól
+      // a méret-1-ig tartó tartományban van. A && miatt mind a négy feltételnek igaznak kell lennie.
+      return r >= 0 && r < this.rows && c >= 0 && c < this.cols;
+    }
+
+    // Egyszerű érték beolvasása; változónál ellenőrzi, hogy már kapott-e értéket.
+    read(sv, line) {
+      // Az sv (simple value) egy olyan AST-objektum, amely egy értéket ír le.
+      // Először megnézzük, hogy közvetlenül beírt számról vagy logikai értékről van-e szó.
+      if (sv.kind === 'int') return { type: 'int', value: sv.value };
+      if (sv.kind === 'bool') return { type: 'bool', value: sv.value };
+      // Ha egyik sem, akkor változóhivatkozásról van szó; a név alapján kikeressük.
+      const v = this.vars.get(sv.name);
+      // A Map.get undefined értéket ad, ha ilyen nevű változót még nem állítottunk be.
+      if (!v) {
+        throw new MineScriptRuntimeError('E_UNINITIALIZED', line, `A(z) „${sv.name}” változónak még nincs értéke.`);
+      }
+      // Ha létezik, visszaadjuk a változó eltárolt { type, value } objektumát.
+      return v;
+    }
+
+    // Robotparancs paraméterének ellenőrzése: egész típus és további feltétel.
+    readApiInt(sv, line, apiName, okFn, expected) {
+      // Ezt a segédfüggvényt olyan paraméterekhez használjuk, amelyeknek egész számnak
+      // kell lenniük, és lehet még egy extra feltételük is (például nem lehetnek negatívak).
+      // Először a szokásos read() függvénnyel kiolvassuk az értéket.
+      const v = this.read(sv, line);
+      // Hibás, ha nem egész típusú, vagy ha az átadott ellenőrző függvény hamisat ad.
+      if (v.type !== 'int' || !okFn(v.value)) {
+        throw new MineScriptRuntimeError('E_BAD_ARG', line,
+          `A(z) „${apiName}” paramétere ${expected} kell legyen, de ${formatValue(v)} (${typeName(v.type)}) érkezett.`);
+      }
+      // Sikeres ellenőrzés után már biztonságosan visszaadható a számérték.
+      return v.value;
+    }
+
+    // Feltétel kiolvasása; csak logikai értéket fogad el.
+    condition(sv, line) {
+      // Az if és while feltételeit ezen a ponton olvassuk ki.
+      const v = this.read(sv, line);
+      // Feltételként csak true vagy false használható, egész szám nem.
+      if (v.type !== 'bool') {
+        throw new MineScriptRuntimeError('E_NON_BOOL_CONDITION', line, `A feltétel értéke ${formatValue(v)}, ami nem logikai érték.`);
+      }
+      return v.value;
+    }
+
+    /** A robot előtti mező vizsgálata: 0 üres, 1 fal (vagy térképen kívül), 2 arany. */
+    // Megvizsgálja a robot előtt lévő mezőt, és a mezőt felfedezettként jelöli.
+    lookAhead() {
+      // A robot aktuális irányából meghatározzuk, melyik mező van közvetlenül előtte.
+      const [dr, dc] = DIR_DELTA[this.robot.dir];
+      const r = this.robot.r + dr;
+      const c = this.robot.c + dc;
+      // Elmentjük a vizsgált koordinátát, hogy a felület a look eseménynél meg tudja jeleníteni.
+      this.lastLook = { r, c };
+      // A térképen kívüli területet falnak tekintjük, ezért itt 1-et adunk vissza.
+      if (!this.inBounds(r, c)) return 1;
+      // A térképen belüli vizsgált mezőt felfedezettnek jelöljük.
+      this.discovered[r][c] = true;
+      // Kiolvassuk, milyen mező van a robot előtt.
+      const cell = this.grid[r][c];
+      // A visszatérési kódok: 1 = fal, 2 = arany, 0 = üres mező.
+      if (cell === CELL_WALL) return 1;
+      if (cell === CELL_GOLD) return 2;
+      return 0;
+    }
+
+    // A parser által létrehozott kifejezés-csomópontot kiértékeli.
+    evaluate(expr, line) {
+      // Az expr a parser által készített kifejezés-objektum (AST-csomópont).
+      // A type mező mondja meg, milyen fajta kifejezést kell tényleges értékké alakítani.
+      switch (expr.type) {
+        case 'value':
+          // Egyszerű értéknél csak kiolvassuk a számot, logikai értéket vagy változót.
+          return this.read(expr.value, line);
+        case 'isThere': {
+          // Az isThere paramétere csak 0, 1 vagy 2 lehet.
+          // Ezek a lookAhead által visszaadott mezőtípusok: üres, fal, arany.
+          const w = this.readApiInt(expr.arg, line, 'isThere', (v) => v >= 0 && v <= 2, '0, 1 vagy 2');
+          // Megnézzük a robot előtti mezőt, és annak kódját összehasonlítjuk a kért értékkel.
+          // A visszatérési érték már logikai típusú: igaz, ha egyezik.
+          return { type: 'bool', value: this.lookAhead() === w };
+        }
+        case 'not': {
+          // Kiolvassuk a not utáni értéket.
+          const v = this.read(expr.arg, line);
+          // A tagadás csak logikai értékre alkalmazható.
+          if (v.type !== 'bool') this.badOperand('not', v, line);
+          // A ! operátor felcseréli az igaz és hamis értéket.
+          return { type: 'bool', value: !v.value };
+        }
+        case 'binop':
+          // Kétoperandusú műveletnél a külön függvény intézi az operandusok
+          // kiolvasását, típusellenőrzését és a tényleges számítást.
+          return this.evaluateBinop(expr, line);
+        default:
+          throw new Error('Ismeretlen kifejezés: ' + expr.type);
+      }
+    }
+
+    // Egységes hibát dob, ha egy operátor nem megfelelő típusú értéket kap.
+    badOperand(op, v, line) {
+      throw new MineScriptRuntimeError('E_BAD_OPERAND', line,
+        `A(z) „${op}” művelet nem alkalmazható ${typeName(v.type)} értékre (${formatValue(v)}).`);
+    }
+
+    // Az operátor alapján ellenőrzi az operandus típusát.
+    checkOperand(op, v, line) {
+      // A +, -, * és az összehasonlító (<, <=, >, >=) műveletek számokat várnak.
+      if ((ARITH_OPS.has(op) || COMPARE_OPS.has(op)) && v.type !== 'int') this.badOperand(op, v, line);
+      // Az and és or csak logikai értékekkel használható.
+      // Az = és <> külön szabályt kapnak: azoknál a két oldalnak kell azonos típusúnak lennie.
+      if (LOGIC_OPS.has(op) && v.type !== 'bool') this.badOperand(op, v, line);
+    }
+
+    // Kétoperandusú művelet kiértékelése és típusellenőrzése.
+    evaluateBinop(expr, line) {
+      const { op } = expr;
+      // Balról jobbra: az első operandus beolvasása és azonnali ellenőrzése...
+      const a = this.read(expr.left, line);
+      this.checkOperand(op, a, line);
+      // ...majd a másodiké (rövidzár nincs, a második mindig beolvasásra kerül).
+      const b = this.read(expr.right, line);
+      this.checkOperand(op, b, line);
+      // Az egyenlőségvizsgálatnál (= és <>) megengedett számokat vagy logikai értékeket
+      // összehasonlítani, de a két oldal típusa nem térhet el egymástól.
+      if (EQUALITY_OPS.has(op) && a.type !== b.type) {
+        throw new MineScriptRuntimeError('E_BAD_OPERAND', line,
+          `A(z) „${op}” két oldala eltérő típusú (${typeName(a.type)} és ${typeName(b.type)}).`);
+      }
+      // Ha az operandusok rendben vannak, az operátor alapján végrehajtjuk a műveletet.
+      // Minden ág a művelet eredményét és annak típusát tartalmazó objektumot ad vissza.
+      switch (op) {
+        // Számolási műveletek: egész eredményt adnak, 32 bites előjeles tartományba hajtva.
+        case '+': return { type: 'int', value: wrap32(a.value + b.value) };
+        case '-': return { type: 'int', value: wrap32(a.value - b.value) };
+        case '*': return { type: 'int', value: Math.imul(a.value, b.value) };
+        // Összehasonlítások: a JavaScript eredménye true/false, tehát logikai értéket adnak.
+        case '<': return { type: 'bool', value: a.value < b.value };
+        case '<=': return { type: 'bool', value: a.value <= b.value };
+        case '>': return { type: 'bool', value: a.value > b.value };
+        case '>=': return { type: 'bool', value: a.value >= b.value };
+        // Egyenlőség és különbözőség: szigorú összehasonlítás, típuskonverzió nélkül.
+        case '=': return { type: 'bool', value: a.value === b.value };
+        case '<>': return { type: 'bool', value: a.value !== b.value };
+        // Logikai műveletek: két logikai értékből új logikai értéket számítanak.
+        case 'and': return { type: 'bool', value: a.value && b.value };
+        case 'or': return { type: 'bool', value: a.value || b.value };
+        default: throw new Error('Ismeretlen operátor: ' + op);
+      }
+    }
+
+    /** A felületnek: a robot iránya karakterként. */
+    // Robot irányát a térképen használt karakterrel adja vissza.
+    robotChar() {
+      return DIR_CHARS[this.robot.dir];
+    }
+
+    // Robot irányát magyar szöveges névvel adja vissza.
+    robotDirName() {
+      return DIR_NAMES[this.robot.dir];
+    }
+
+    // A változókat tömbként adja vissza, megjelenítéshez.
+    variables() {
+      // A Map.entries() név-érték párokat ad. Az Array.from tömbbé alakítja.
+      // A map() minden párból egy egyszerű objektumot készít, amelyet a felület meg tud jeleníteni.
+      // A belső értéket itt is szöveggé alakítjuk a formatValue segítségével.
+      return Array.from(this.vars.entries()).map(([name, v]) => ({ name, type: v.type, value: formatValue(v) }));
+    }
+  }
+
+  /** Kényelmi függvény: forráskód + térkép -> eredmény (tesztekhez). */
+  // Rövid segédfüggvény: parse, majd siker esetén futtatás.
+  function run(source, map) {
+    // Ez egy kényelmi függvény, amely egyetlen hívással elvégzi a teljes folyamatot.
+    // Először megpróbáljuk szintaktikailag feldolgozni a forráskódot.
+    const parsed = parseProgram(source);
+    // Ha a parser hibát talált, nincs mit futtatni: a szintaktikai hibákat adjuk vissza.
+    if (!parsed.ok) return { status: 'SYNTAX_ERROR', errors: parsed.errors };
+    // Sikeres parse után létrehozzuk a futtatót, és animáció nélkül végigfuttatjuk.
+    return new Runner(parsed.program, map).runToEnd();
+  }
+
+  // A modulból kívülről elérhető függvények és konstansok listája.
+  return {
+    KEYWORDS,
+    MAX_STEPS,
+    MAP_MIN,
+    MAP_MAX,
+    DIR_CHARS,
+    DIR_NAMES,
+    ERROR_DESCRIPTIONS,
+    parseMap,
+    validateGrid,
+    serializeMap,
+    countGold,
+    parseProgram,
+    Runner,
+    run,
+  };
+});
