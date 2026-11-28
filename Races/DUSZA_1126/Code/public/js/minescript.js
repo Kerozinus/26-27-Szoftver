@@ -431,85 +431,72 @@ function countGold(map) {
   }
 
 
-
-
-
-
-  
-  /** Egy sor (behúzás nélküli) tokenjeiből utasítás-csomópontot készít. */
-  // A tokenek első eleme alapján kiválasztja és ellenőrzi az utasítás típusát.
   function parseCommand(tokens, line) {
-    // A teljes sort tokenekre bontva kapjuk meg. Az első token mondja meg,
-    // milyen utasítással van dolgunk. Például: ["step", "forward", "3"].
+    //pl "step"
     const head = tokens[0];
 
-    // A switch minden ismert utasítást külön ágban dolgoz fel.
-    // Itt ellenőrizzük az utasítás alakját, majd elkészítjük az AST-objektumot.
-    // A robot még nem mozog és változóérték sem változik: ez csak elemzés.
     switch (head) {
       case 'step':
-        // A step utasítás kötelező alakja: step forward n.
-        // A második szó tehát nem tetszőleges, hanem pontosan "forward" kell legyen.
+        // a masodik szonek "forward"-nak kell lennie
         expectKeyword(tokens, 1, 'forward', line, 'step forward n');
-        // Három tokennek kell lennie: step | forward | n.
+        
         expectCount(tokens, 3, line, 'step forward n');
-        // A harmadik token értelmezése után egy step típusú AST-csomópont jön létre.
+        // A lépések számát egyszerű értékként tároljuk az AST-ben.
         return { kind: 'step', arg: parseSimpleval(tokens[2], line) };
+
       case 'turn':
-        // A turn utasítás alakja: turn by n, ahol n a fordulások száma.
+        // turn by n, n = fordulások száma.
         expectKeyword(tokens, 1, 'by', line, 'turn by n');
+
         expectCount(tokens, 3, line, 'turn by n');
+
         // A fordulások számát egyszerű értékként tároljuk az AST-ben.
         return { kind: 'turn', arg: parseSimpleval(tokens[2], line) };
+
       case 'mine':
         // A bányászás egyetlen megengedett alakja: mine here.
         expectKeyword(tokens, 1, 'here', line, 'mine here');
         expectCount(tokens, 2, line, 'mine here');
-        // Nincs paramétere, ezért az AST-csomópontnak sem kell arg mező.
+        // nincs parameter (szam)
         return { kind: 'mine' };
+
       case 'print':
-        // A print pontosan egy kiírandó értéket vár: print x.
+        // csak egy erteket lehet kiirni
         expectCount(tokens, 2, line, 'print x');
-        // A kiírandó rész lehet literális érték vagy változónév.
         return { kind: 'print', arg: parseSimpleval(tokens[1], line) };
+
       case 'set': {
-        // A set alakja: set változónév to kifejezés.
-        // Először a második tokenből ellenőrzött változónevet készítünk.
+        // masodik tokenbol valtozonev
         const name = parseIdent(tokens[1], line);
-        // A harmadik tokennek kötelezően "to"-nak kell lennie.
+        // harmadik token = to
         expectKeyword(tokens, 2, 'to', line, 'set változó to érték');
-        // A slice(3) a 3-as indexű elemtől a sor végéig másolja a tokeneket.
-        // Vagyis a set, a név és a to kimarad, csak a beállítandó kifejezés marad.
-        // Ezt a parseCalculated dolgozza fel.
+        //a slice utan csak a to utani resz marad -> a kifejezes
         return { kind: 'set', name, expr: parseCalculated(tokens.slice(3), line) };
       }
+
       case 'if':
-        // Az if sorban egyetlen feltétel szerepelhet: if feltétel.
+        // csak egy feltetel lehet
         expectCount(tokens, 2, line, 'if feltétel');
-        // A feltétel itt még csak egy egyszerű érték vagy változó leírása.
-        // Azt, hogy futás közben valóban logikai érték-e, a Runner ellenőrzi.
         return { kind: 'if', cond: parseSimpleval(tokens[1], line) };
+
       case 'while':
-        // A while sor ugyanúgy egyetlen feltételt kap.
+        // csak egy feltetel lehet
         expectCount(tokens, 2, line, 'while feltétel');
-        // A ciklustörzs még nincs itt feldolgozva; azt később a behúzások alapján
-        // a parseBlock/parseChildBlock függvények kapcsolják ehhez a csomóponthoz.
         return { kind: 'while', cond: parseSimpleval(tokens[1], line) };
+
       case 'else':
-        // Az else önállóan áll, nem követheti feltétel vagy további paraméter.
-        // Azt, hogy valóban egy if-hez tartozik-e, a blokkelemzés dönti el.
+        // nem kovetheti semmi
         expectCount(tokens, 1, line, 'else (egyedül a sorban)');
         return { kind: 'else' };
+
       default: {
-        // Ha az első token egyik ismert utasítással sem egyezik, megpróbáljuk
-        // megállapítani, hogy csak a kis- és nagybetűk használata volt-e hibás.
+        //ha egyik se
         const lower = head.toLowerCase();
-        // Az összes olyan utasítás neve, amelyet a parser ismer.
         const known = ['step', 'turn', 'mine', 'print', 'set', 'if', 'while', 'else'];
-        // Például a "STEP" kisbetűsítve "step" lesz, így tudunk célzott tippet adni.
         const hint = known.find((k) => k === lower);
-        // Ha találtunk ilyen szót, jelezzük a helyes kisbetűs alakot.
-        // Ha nem, felsoroljuk az összes választható utasítást.
+        //segitseget adunk ha talaltunk kisbetusse alakitva
+        // ha nincs, akkor csak a lehetséges utasitasokat irjuk ki
+
         throw new MineScriptSyntaxError(line, hint
           ? `Ismeretlen utasítás: „${head}”. A kulcsszavak kis- és nagybetűérzékenyek, helyesen: „${hint}”.`
           : `Ismeretlen utasítás: „${head}”. Lehetséges: step, turn, mine, print, set, if, else, while.`);
@@ -517,7 +504,11 @@ function countGold(map) {
     }
   }
 
-  // A forrás szövegét sorokra bontja és a legvégén lévő egy sortörést elfogadja.
+
+
+
+
+  
   function splitSourceLines(source) {
     // Biztosítjuk, hogy szöveggel dolgozzunk akkor is, ha a hívó más típust ad át.
     // A String(source) a bemenetet szöveggé alakítja.
